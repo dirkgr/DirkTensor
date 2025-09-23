@@ -12,7 +12,7 @@
 #include <cassert>
 #include <memory>
 
-std::vector<uint64_t> parse_tensor_shape(const std::string& filename) {
+std::vector<std::size_t> parse_tensor_shape(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
     if (!file.is_open()) {
         throw std::runtime_error("Cannot open file: " + filename);
@@ -23,15 +23,17 @@ std::vector<uint64_t> parse_tensor_shape(const std::string& filename) {
     file.read(reinterpret_cast<char*>(&ndim), sizeof(ndim));
 
     // Read each dimension size
-    std::vector<uint64_t> shape(ndim);
+    std::vector<std::size_t> shape(ndim);
     for (uint32_t i = 0; i < ndim; ++i) {
-        file.read(reinterpret_cast<char*>(&shape[i]), sizeof(shape[i]));
+        uint64_t dim_size;
+        file.read(reinterpret_cast<char*>(&dim_size), sizeof(dim_size));
+        shape[i] = static_cast<std::size_t>(dim_size);
     }
 
     return shape;
 }
 
-float* mmap_tensor_data(const std::string& filename, const std::vector<uint64_t>& shape) {
+float* mmap_tensor_data(const std::string& filename, const std::vector<std::size_t>& shape) {
     int fd = open(filename.c_str(), O_RDONLY);
     if (fd == -1) {
         throw std::runtime_error("Cannot open file: " + filename);
@@ -41,8 +43,8 @@ float* mmap_tensor_data(const std::string& filename, const std::vector<uint64_t>
     const size_t header_size = sizeof(uint32_t) + shape.size() * sizeof(uint64_t);
 
     // Calculate total tensor elements
-    uint64_t total_elements = 1;
-    for (uint64_t dim : shape) {
+    std::size_t total_elements = 1;
+    for (std::size_t dim : shape) {
         total_elements *= dim;
     }
 
@@ -71,14 +73,12 @@ int main() {
     assert(embeddings_shape[1] == 2048);
     float* embeddings_data = mmap_tensor_data("models/OLMo-2-0425-1B/model.embed_tokens.weight.bin", embeddings_shape);
     
-    // Create xtensor array from existing data (copy to owned memory for simplicity)
-    std::vector<std::size_t> xt_shape = {embeddings_shape[0], embeddings_shape[1]};
-    std::size_t total_elements = embeddings_shape[0] * embeddings_shape[1];
-    std::vector<float> data_copy(embeddings_data, embeddings_data + total_elements);
-    auto embeddings = xt::adapt(data_copy, xt_shape);
+    // Create xtensor array from memory-mapped data (non-owning)
+    // Use xtensor with explicit type specification to avoid ambiguity
+    auto embeddings = xt::adapt(const_cast<const float*>(embeddings_data), embeddings_shape);
 
-    // Print first few elements of first row of embeddings
-    std::cout << "First 10 elements of first row: ";
+    // Print first 10 elements of first row using xtensor
+    std::cout << "First 10 elements: ";
     for (int i = 0; i < 10; ++i) {
         std::cout << embeddings(0, i) << " ";
     }
