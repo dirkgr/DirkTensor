@@ -8,20 +8,29 @@ Usage:
 
 import sys
 import struct
+import logging
 from transformers import AutoTokenizer
+
+# Configure logging to stderr (bash-friendly)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s: %(message)s',
+    stream=sys.stderr
+)
 
 def tokenize_and_save(text: str, output_file: str):
     """Tokenize text and save token IDs to binary file."""
 
     # Load the dolma2 tokenizer
-    print("Loading tokenizer...")
+    logging.info("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained("allenai/dolma2-tokenizer")
 
     # Tokenize the text
-    print(f"Tokenizing text: '{text}'")
+    logging.info(f"Tokenizing text: '{text}'")
     token_ids = tokenizer.encode(text)
 
-    print(f"Generated {len(token_ids)} tokens: {token_ids}")
+    logging.info(f"Generated {len(token_ids)} tokens")
+    logging.debug(f"Token IDs: {token_ids}")
 
     # Write to binary file
     # Format: uint32 for count, followed by uint32 for each token ID
@@ -33,12 +42,12 @@ def tokenize_and_save(text: str, output_file: str):
         for token_id in token_ids:
             f.write(struct.pack('<I', token_id))  # little-endian uint32
 
-    print(f"Token IDs saved to {output_file}")
+    logging.info(f"Token IDs saved to {output_file}")
 
 def main():
     if len(sys.argv) != 3:
-        print("Usage: python tokenize_text.py <text> <output_file>")
-        print("Example: python tokenize_text.py \"Hello world!\" tokens.bin")
+        logging.error("Usage: python tokenize_text.py <text> <output_file>")
+        logging.error("Example: python tokenize_text.py \"Hello world!\" tokens.bin")
         sys.exit(1)
 
     text = sys.argv[1]
@@ -47,7 +56,7 @@ def main():
     try:
         tokenize_and_save(text, output_file)
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
