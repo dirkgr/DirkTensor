@@ -53,11 +53,7 @@ def main():
     text = sys.argv[1]
     output_file = sys.argv[2]
 
-    try:
-        tokenize_and_save(text, output_file)
-    except Exception as e:
-        logging.error(f"Error: {e}")
-        sys.exit(1)
+    tokenize_and_save(text, output_file)
 
 if __name__ == "__main__":
     main()
