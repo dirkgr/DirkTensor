@@ -1,4 +1,5 @@
 #include <xtensor/xarray.hpp>
+#include <xtensor/xtensor.hpp>
 #include <xtensor/xio.hpp>
 #include <xtensor/xview.hpp>
 #include <xtensor/xadapt.hpp>
@@ -10,7 +11,7 @@
 #include <vector>
 #include <stdexcept>
 #include <cassert>
-#include <memory>
+#include <algorithm>
 
 std::vector<std::size_t> parse_tensor_shape(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
@@ -65,24 +66,54 @@ float* mmap_tensor_data(const std::string& filename, const std::vector<std::size
     return data;
 }
 
-int main() {
-    // Load OLMo 2 1B
+xt::xtensor<uint32_t, 1> read_tokens(std::istream& input) {
+    uint32_t count;
+    input.read(reinterpret_cast<char*>(&count), sizeof(count));
+    if (!input) {
+        throw std::runtime_error("Failed to read token count");
+    }
+
+    xt::xtensor<uint32_t, 1> tokens = xt::empty<uint32_t>({count});
+    input.read(reinterpret_cast<char*>(tokens.data()), count * sizeof(uint32_t));
+    if (!input) {
+        throw std::runtime_error("Failed to read token IDs");
+    }
+
+    return tokens;
+}
+
+int main(int argc, char* argv[]) {
+    // Read tokens
+    xt::xtensor<uint32_t, 1> tokens;
+    if (argc > 1) {
+        std::ifstream file(argv[1], std::ios::binary);
+        if (!file) {
+            throw std::runtime_error("Cannot open file: " + std::string(argv[1]));
+        }
+        tokens = read_tokens(file);
+    } else {
+        tokens = read_tokens(std::cin);
+    }
+
+    // Process tokens here...
+    std::cout << "Token IDs (" << tokens.shape()[0] << "): ";
+    for (std::size_t i = 0; i < std::min(static_cast<std::size_t>(10), tokens.shape()[0]); ++i) {
+        std::cout << tokens(i) << " ";
+    }
+    std::cout << std::endl;
+
+    // Load OLMo 2 1B embeddings (for future use)
     const auto embeddings_shape = parse_tensor_shape("models/OLMo-2-0425-1B/model.embed_tokens.weight.bin");
     assert(embeddings_shape.size() == 2);
     assert(embeddings_shape[0] == 100352);
     assert(embeddings_shape[1] == 2048);
     float* embeddings_data = mmap_tensor_data("models/OLMo-2-0425-1B/model.embed_tokens.weight.bin", embeddings_shape);
-    
+
     // Create xtensor array from memory-mapped data (non-owning)
     // Use xtensor with explicit type specification to avoid ambiguity
     auto embeddings = xt::adapt(const_cast<const float*>(embeddings_data), embeddings_shape);
 
-    // Print first 10 elements of first row using xtensor
-    std::cout << "First 10 elements: ";
-    for (int i = 0; i < 10; ++i) {
-        std::cout << embeddings(0, i) << " ";
-    }
-    std::cout << std::endl;
+    std::cout << "Loaded embeddings with shape: (" << embeddings_shape[0] << ", " << embeddings_shape[1] << ")" << std::endl;
 
     return 0;
 }
