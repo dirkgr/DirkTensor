@@ -11,7 +11,6 @@
 #include <vector>
 #include <stdexcept>
 #include <cassert>
-#include <algorithm>
 
 std::vector<std::size_t> parse_tensor_shape(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
@@ -95,14 +94,7 @@ int main(int argc, char* argv[]) {
         tokens = read_tokens(std::cin);
     }
 
-    // Process tokens here...
-    std::cout << "Token IDs (" << tokens.shape()[0] << "): ";
-    for (std::size_t i = 0; i < std::min(static_cast<std::size_t>(10), tokens.shape()[0]); ++i) {
-        std::cout << tokens(i) << " ";
-    }
-    std::cout << std::endl;
-
-    // Load OLMo 2 1B embeddings (for future use)
+    // Load OLMo 2 1B embeddings
     const auto embeddings_shape = parse_tensor_shape("models/OLMo-2-0425-1B/model.embed_tokens.weight.bin");
     assert(embeddings_shape.size() == 2);
     assert(embeddings_shape[0] == 100352);
