@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tokenize text using the dolma2 tokenizer and write token IDs to a binary file.
+Tokenize text using the dolma2 tokenizer and write token IDs as binary integers.
 
 Usage:
     python tokenize_text.py "Hello world, this is a test!" output_tokens.bin
@@ -19,7 +19,7 @@ logging.basicConfig(
 )
 
 def tokenize_and_save(text: str, output_file: str = None):
-    """Tokenize text and save token IDs to binary file or stdout."""
+    """Tokenize text and save token IDs as binary integers."""
 
     # Load the dolma2 tokenizer
     logging.info("Loading tokenizer...")
@@ -33,7 +33,7 @@ def tokenize_and_save(text: str, output_file: str = None):
     logging.debug(f"Token IDs: {token_ids}")
 
     # Determine output destination
-    if output_file is None or output_file == '-':
+    if output_file is None:
         # Write to stdout
         output_stream = sys.stdout.buffer
         logging.info("Writing token IDs to stdout")
@@ -43,18 +43,14 @@ def tokenize_and_save(text: str, output_file: str = None):
         logging.info(f"Writing token IDs to {output_file}")
 
     try:
-        # Write binary data
-        # Format: uint32 for count, followed by uint32 for each token ID
-        output_stream.write(struct.pack('<I', len(token_ids)))  # little-endian uint32
-
-        # Write each token ID
+        # Write each token ID as uint32 (little-endian)
         for token_id in token_ids:
-            output_stream.write(struct.pack('<I', token_id))  # little-endian uint32
+            output_stream.write(struct.pack('<I', token_id))
 
         output_stream.flush()
     finally:
         # Close file if we opened one (don't close stdout)
-        if output_file is not None and output_file != '-':
+        if output_file is not None:
             output_stream.close()
 
 def main():
@@ -62,7 +58,6 @@ def main():
         logging.error("Usage: python tokenize_text.py <text> [output_file]")
         logging.error("Examples:")
         logging.error("  python tokenize_text.py \"Hello world!\" tokens.bin  # Write to file")
-        logging.error("  python tokenize_text.py \"Hello world!\" -           # Write to stdout")
         logging.error("  python tokenize_text.py \"Hello world!\"             # Write to stdout")
         sys.exit(1)
 
