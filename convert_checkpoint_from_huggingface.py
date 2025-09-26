@@ -1,7 +1,7 @@
 import argparse
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import os
-import struct
+import numpy as np
 import logging
 
 
@@ -24,22 +24,13 @@ def main():
     for name, parameter in olmo.named_parameters():
         # Create a safe filename from parameter name
         safe_name = name.replace('/', '_')
-        filepath = os.path.join(output_dir, f"{safe_name}.bin")
-        
-        with open(filepath, 'wb') as f:
-            # Write number of dimensions
-            ndim = len(parameter.shape)
-            f.write(struct.pack('I', ndim))
-            
-            # Write each dimension size
-            for dim_size in parameter.shape:
-                f.write(struct.pack('Q', dim_size))
-            
-            # Convert to float32 and write tensor data
-            tensor_data = parameter.detach().cpu().float()
-            f.write(tensor_data.numpy().tobytes())
+        filepath = os.path.join(output_dir, f"{safe_name}.npy")
 
-        print(f"{name}\t{tuple(parameter.shape)}\t{filepath}")
+        # Convert to float32 numpy array and save in .npy format
+        tensor_data = parameter.detach().cpu().float().numpy()
+        np.save(filepath, tensor_data)
+
+        logger.info(f"{name}\t{tuple(parameter.shape)}\t{filepath}")
 
 
 if __name__ == "__main__":
