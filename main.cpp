@@ -9,37 +9,42 @@
 #include <vector>
 #include <stdexcept>
 #include <cassert>
+#include <cstdio>
+#include <iterator>
 
 xt::xtensor<uint32_t, 1> read_tokens(std::istream& input) {
-    uint32_t count;
-    input.read(reinterpret_cast<char*>(&count), sizeof(count));
-    if (!input) {
-        throw std::runtime_error("Failed to read token count");
+    std::vector<uint32_t> token_vec;
+    uint32_t token;
+
+    // Read tokens until EOF
+    while (input.read(reinterpret_cast<char*>(&token), sizeof(token))) {
+        token_vec.push_back(token);
     }
 
-    xt::xtensor<uint32_t, 1> tokens = xt::empty<uint32_t>({count});
-    input.read(reinterpret_cast<char*>(tokens.data()), count * sizeof(uint32_t));
-    if (!input) {
-        throw std::runtime_error("Failed to read token IDs");
-    }
-
-    return tokens;
+    // Convert to xtensor
+    xt::xtensor<uint32_t, 1> result = xt::empty<uint32_t>({token_vec.size()});
+    std::copy(token_vec.begin(), token_vec.end(), result.begin());
+    return result;
 }
 
 static const size_t hidden_dim = 2048;
 
 int main(int argc, char* argv[]) {
-    // Read tokens
+    // Read tokens from binary stream
     xt::xtensor<uint32_t, 1> tokens;
     if (argc > 1) {
+        // Read from file
         std::ifstream file(argv[1], std::ios::binary);
         if (!file) {
             throw std::runtime_error("Cannot open file: " + std::string(argv[1]));
         }
         tokens = read_tokens(file);
     } else {
+        // Read from stdin
         tokens = read_tokens(std::cin);
     }
+
+    std::cout << "Read " << tokens.size() << " tokens" << std::endl;
 
     // Load OLMo 2 1B embeddings from .npy file
     auto embeddings = xt::load_npy<float>("models/OLMo-2-0425-1B/model.embed_tokens.weight.npy");
