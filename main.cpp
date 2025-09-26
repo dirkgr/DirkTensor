@@ -81,6 +81,8 @@ xt::xtensor<uint32_t, 1> read_tokens(std::istream& input) {
     return tokens;
 }
 
+static const size_t hidden_dim = 2048;
+
 int main(int argc, char* argv[]) {
     // Read tokens
     xt::xtensor<uint32_t, 1> tokens;
@@ -97,8 +99,7 @@ int main(int argc, char* argv[]) {
     // Load OLMo 2 1B embeddings
     const auto embeddings_shape = parse_tensor_shape("models/OLMo-2-0425-1B/model.embed_tokens.weight.bin");
     assert(embeddings_shape.size() == 2);
-    assert(embeddings_shape[0] == 100352);
-    assert(embeddings_shape[1] == 2048);
+    assert(embeddings_shape[1] == hidden_dim);
     float* embeddings_data = mmap_tensor_data("models/OLMo-2-0425-1B/model.embed_tokens.weight.bin", embeddings_shape);
 
     // Create xtensor array from memory-mapped data (non-owning)
