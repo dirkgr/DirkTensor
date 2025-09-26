@@ -6,7 +6,8 @@
       "Bash(git add:*)",
       "Bash(git checkout:*)",
       "Bash(git pull:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(c++:*)"
     ],
     "deny": [],
     "ask": []
