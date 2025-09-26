@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(cmake:*)",
-      "Bash(./cmake-build-debug/DirkTensor)"
+      "Bash(./cmake-build-debug/DirkTensor)",
+      "Bash(git add:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git branch:*)"
     ],
     "deny": [],
     "ask": []
