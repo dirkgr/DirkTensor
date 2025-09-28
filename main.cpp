@@ -1,16 +1,18 @@
-#include <xtensor/xarray.hpp>
-#include <xtensor/xtensor.hpp>
-#include <xtensor/xio.hpp>
-#include <xtensor/xview.hpp>
-#include <xtensor/xadapt.hpp>
-#include <xtensor/xnpy.hpp>
 #include <fstream>
 #include <iostream>
 #include <vector>
 #include <stdexcept>
 #include <cassert>
-#include <cstdio>
 #include <iterator>
+
+#include <xtensor/containers/xarray.hpp>
+#include <xtensor/containers/xtensor.hpp>
+#include <xtensor/io/xio.hpp>
+#include <xtensor/views/xview.hpp>
+#include <xtensor/containers/xadapt.hpp>
+#include <xtensor/io/xnpy.hpp>
+#include <xtensor-blas/xlinalg.hpp>
+
 
 xt::xtensor<uint32_t, 1> read_tokens(std::istream& input) {
     std::vector<uint32_t> token_vec;
@@ -27,7 +29,42 @@ xt::xtensor<uint32_t, 1> read_tokens(std::istream& input) {
     return result;
 }
 
-static const size_t hidden_dim = 2048;
+class OlmoBlock {
+public:
+    OlmoBlock(const std::string& folder) {
+
+    }
+
+private:
+
+};
+
+
+class OlmoModel {
+public:
+    static const size_t hidden_dim = 2048;
+    static const size_t batch_size = 1;
+
+    OlmoModel(const std::string& folder) {
+        m_embeddings = xt::load_npy<float>(folder + "/model.embed_tokens.weight.npy");
+        // Verify shape
+        assert(m_embeddings.shape().size() == 2);
+        assert(m_embeddings.shape()[1] == hidden_dim);
+
+        m_lmHead = xt::load_npy<float>(folder + "/lm_head.weight.npy");
+    }
+
+    auto forward(const uint32_t token) {
+        auto x = xt::view(m_embeddings, token, xt::all());
+
+        return xt::linalg::dot(x, xt::transpose(m_lmHead));
+    }
+
+private:
+    xt::xtensor<float, 2> m_embeddings;
+    xt::xtensor<float, 2> m_lmHead;
+};
+
 
 int main(int argc, char* argv[]) {
     // Read tokens from binary stream
@@ -46,14 +83,9 @@ int main(int argc, char* argv[]) {
 
     std::cout << "Read " << tokens.size() << " tokens" << std::endl;
 
-    // Load OLMo 2 1B embeddings from .npy file
-    auto embeddings = xt::load_npy<float>("models/OLMo-2-0425-1B/model.embed_tokens.weight.npy");
-
-    // Verify shape
-    assert(embeddings.shape().size() == 2);
-    assert(embeddings.shape()[1] == hidden_dim);
-
-    std::cout << "Loaded embeddings with shape: (" << embeddings.shape()[0] << ", " << embeddings.shape()[1] << ")" << std::endl;
+    OlmoModel model("models/OLMo-2-0425-1B");
+    const auto probs = model.forward(tokens(0));
+    std::cout << probs << std::endl;
 
     return 0;
 }
