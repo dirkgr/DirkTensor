@@ -12,23 +12,26 @@ enable_testing()
 FetchContent_Declare(
     xtl
     GIT_REPOSITORY https://github.com/xtensor-stack/xtl.git
-    GIT_TAG 0.7.7  # Use latest stable version
+    GIT_TAG 0.8.0
 )
-
-# Fetch xtensor
 FetchContent_Declare(
     xtensor
     GIT_REPOSITORY https://github.com/xtensor-stack/xtensor.git
-    GIT_TAG 0.25.0  # Use latest stable version
+    GIT_TAG 0.27.0
+)
+FetchContent_Declare(
+        xtensor-blas
+        GIT_REPOSITORY https://github.com/xtensor-stack/xtensor-blas.git
+        GIT_TAG 0.23.0
 )
 
 # Make the libraries available
-FetchContent_MakeAvailable(xtl xtensor)
+FetchContent_MakeAvailable(xtl xtensor xtensor-blas)
 
 add_executable(DirkTensor main.cpp)
 
 # Link xtensor (header-only library)
-target_link_libraries(DirkTensor xtensor xtl)
+target_link_libraries(DirkTensor xtensor xtl xtensor-blas)
 
 # Enable optimizations for release builds
 target_compile_options(DirkTensor PRIVATE
