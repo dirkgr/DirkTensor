@@ -10,6 +10,7 @@
 #include <xtensor/io/xio.hpp>
 #include <xtensor/views/xview.hpp>
 #include <xtensor/io/xnpy.hpp>
+#include <xtensor/misc/xsort.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
 #include "xtutil.h"
@@ -248,8 +249,6 @@ public:
     }
 
     auto forward(const uint32_t token) {
-        std::cout << "Processing token: " << token << std::endl;
-
         // Embedding
         auto x = xt::view(m_embeddings, token, xt::all());
 
@@ -287,11 +286,19 @@ int main(int argc, char* argv[]) {
         tokens = read_tokens(std::cin);
     }
 
-    std::cout << "Read " << tokens.size() << " tokens" << std::endl;
-
     OlmoModel model("models/OLMo-2-0425-1B");
-    const auto probs = model.forward(tokens(0));
-    std::cout << probs << std::endl;
+
+    for (size_t i = 0; i < tokens.size(); i++) {
+        std::cout << "token " << tokens(i) << std::endl;
+        const xt::xtensor<float, 1> logits = -1 * model.forward(tokens(i)); // -1 to sort the highest logit first
+        const auto tokens_in_order = xt::argsort(logits);
+
+        std::cout << "Top 5 next tokens: ";
+        for (size_t j = 0; j < 5; j++) {
+            std::cout << tokens_in_order(j) << " ";
+        }
+        std::cout << std::endl;
+    }
 
     return 0;
 }
