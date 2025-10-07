@@ -28,7 +28,16 @@ FetchContent_Declare(
 # Make the libraries available
 FetchContent_MakeAvailable(xtl xtensor xtensor-blas)
 
-add_executable(DirkTensor main.cpp xtutil.h)
+add_executable(DirkTensor
+    main.cpp
+    xtutil.h
+    model_config.h
+    RMSNorm.h RMSNorm.cpp
+    OlmoMlp.h OlmoMlp.cpp
+    OlmoAttention.h OlmoAttention.cpp
+    OlmoBlock.h OlmoBlock.cpp
+    OlmoModel.h OlmoModel.cpp
+)
 
 # Link xtensor (header-only library)
 target_link_libraries(DirkTensor xtensor xtl xtensor-blas)
