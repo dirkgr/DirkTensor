@@ -61,11 +61,17 @@ class OlmoMlp {
 public:
     OlmoMlp(const std::string& folder, const unsigned int index) {
         m_upProjection =
-            xt::load_npy<float>(std::format("{}/model.layers.{}.mlp.up_proj.weight.npy", folder, index));
+            xt::transpose(
+                xt::load_npy<float>(
+                    std::format("{}/model.layers.{}.mlp.up_proj.weight.npy", folder, index)));
         m_gateProjection =
-            xt::load_npy<float>(std::format("{}/model.layers.{}.mlp.gate_proj.weight.npy", folder, index));
+            xt::transpose(
+                xt::load_npy<float>(
+                    std::format("{}/model.layers.{}.mlp.gate_proj.weight.npy", folder, index)));
         m_downProjection =
-            xt::load_npy<float>(std::format("{}/model.layers.{}.mlp.down_proj.weight.npy", folder, index));
+            xt::transpose(
+                xt::load_npy<float>(
+                    std::format("{}/model.layers.{}.mlp.down_proj.weight.npy", folder, index)));
     }
 
     xt::xtensor<float, 1> forward(const auto& input) {
@@ -130,7 +136,7 @@ public:
         // softmax is (seq, n_heads)
 
         // apply weights to V
-        const auto weighted_sums = xt::sum(vs * softmax, {0});
+        const auto weighted_sums = xt::sum(vs * xt::view(softmax, xt::all(), xt::all(), xt::newaxis()), {0});
         // weighted_sums is (n_heads, head_dim)
         const auto attention_output = xt::reshape_view(weighted_sums, {n_heads * head_dim});
         // attention_output is (d_model,)
