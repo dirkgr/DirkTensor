@@ -28,7 +28,7 @@ FetchContent_Declare(
 # Make the libraries available
 FetchContent_MakeAvailable(xtl xtensor xtensor-blas)
 
-add_executable(DirkTensor main.cpp)
+add_executable(DirkTensor main.cpp xtutil.h)
 
 # Link xtensor (header-only library)
 target_link_libraries(DirkTensor xtensor xtl xtensor-blas)
