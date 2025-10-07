@@ -1,5 +1,5 @@
 import argparse
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM
 import os
 import numpy as np
 import logging
