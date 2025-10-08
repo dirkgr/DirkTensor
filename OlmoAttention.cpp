@@ -55,7 +55,7 @@ xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input)
     return xt::linalg::dot(attention_output, m_oProj);
 }
 
-xt::xtensor<float, 2> OlmoAttention::apply_rope(const xt::xtensor<float, 2>& input, size_t position) const {
+xt::xtensor<float, 2> OlmoAttention::apply_rope(const xt::xtensor<float, 2>& input, size_t position) {
     // input dimensions are (n_heads, head_dim)
 
     static const auto [pos_sin, pos_cos] = rope_buffers();

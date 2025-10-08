@@ -42,7 +42,7 @@ private:
         // rope buffers are (seq_len, head_dim)
     }
 
-    xt::xtensor<float, 2> apply_rope(const xt::xtensor<float, 2>& input, size_t position) const;
+    static xt::xtensor<float, 2> apply_rope(const xt::xtensor<float, 2>& input, size_t position);
 
     // kv cache
     xt::xtensor<float, 3> m_kCache; // (seq_len, n_heads, head_dim)
