@@ -38,7 +38,7 @@ private:
         const xt::xtensor<float, 2> pos_sin_f = xt::cast<float>(pos_sin);
         const xt::xtensor<float, 2> pos_cos_f = xt::cast<float>(pos_cos);
 
-        return std::tuple(pos_sin_f, pos_cos_f);
+        return std::pair(pos_sin_f, pos_cos_f);
         // rope buffers are (seq_len, head_dim)
     }
 
