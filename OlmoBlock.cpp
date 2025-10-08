@@ -10,3 +10,13 @@ OlmoBlock::OlmoBlock(const std::string& folder, const unsigned int index) :
 {
     // nothing to do
 }
+
+xt::xtensor<float, 1> OlmoBlock::forward(const xt::xtensor<float, 1>& input) {
+    const auto after_attention = m_attention.forward(input);
+    const auto normed_after_attention = m_postAttentionNorm.forward(after_attention);
+    const auto h = input + normed_after_attention;
+
+    const auto after_mlp = m_mlp.forward(h);
+    const auto normed_after_mlp = m_postMlpNorm.forward(after_mlp);
+    return h + normed_after_mlp;
+}
