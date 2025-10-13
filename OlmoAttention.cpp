@@ -24,8 +24,8 @@ xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input)
     // q, k, v are all (n_heads, head_dim)
 
     // apply RoPE
-    const auto k_with_rope = apply_rope(q, m_kvCacheEnd);
-    const auto q_with_rope = apply_rope(k, m_kvCacheEnd);
+    const auto q_with_rope = apply_rope(q, m_kvCacheEnd);
+    const auto k_with_rope = apply_rope(k, m_kvCacheEnd);
 
     // put into cache
     xt::view(m_kCache, m_kvCacheEnd) = k_with_rope;
