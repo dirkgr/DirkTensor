@@ -31,7 +31,7 @@ private:
         const auto seq = xt::arange<double>(0, seq_len);
         const auto freqs =
             xt::view(seq, xt::all(), xt::newaxis()) * xt::view(inv_freq, xt::newaxis(), xt::all());
-        const auto positions = xt::concatenate(std::tuple(freqs, freqs), 1);
+        const auto positions = xt::eval(xt::concatenate(std::tuple(freqs, freqs), 1));
         const auto pos_sin = xt::sin(positions);
         const auto pos_cos = xt::cos(positions);
 

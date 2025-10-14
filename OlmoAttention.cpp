@@ -7,10 +7,10 @@ OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index
     m_qNorm(std::format("{}/model.layers.{}.self_attn.q_norm.weight.npy", folder, index)),
     m_kNorm(std::format("{}/model.layers.{}.self_attn.k_norm.weight.npy", folder, index))
 {
-    m_qProj = xt::transpose(xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.q_proj.weight.npy", folder, index)));
-    m_kProj = xt::transpose(xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.k_proj.weight.npy", folder, index)));
-    m_vProj = xt::transpose(xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.v_proj.weight.npy", folder, index)));
-    m_oProj = xt::transpose(xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.o_proj.weight.npy", folder, index)));
+    m_qProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.q_proj.weight.npy", folder, index));
+    m_kProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.k_proj.weight.npy", folder, index));
+    m_vProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.v_proj.weight.npy", folder, index));
+    m_oProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.o_proj.weight.npy", folder, index));
 
     // kv cache
     m_kCache = xt::empty<float>({seq_len, n_heads, head_dim});
@@ -18,9 +18,9 @@ OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index
 }
 
 xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input) {
-    const auto q = xt::reshape_view(m_qNorm.forward(xt::linalg::dot(input, m_qProj)), {n_heads, head_dim});
-    const auto k = xt::reshape_view(m_kNorm.forward(xt::linalg::dot(input, m_kProj)), {n_heads, head_dim});
-    const auto v = xt::reshape_view(xt::linalg::dot(input, m_vProj), {n_heads, head_dim});
+    const auto q = xt::reshape_view(m_qNorm.forward(xt::linalg::dot(m_qProj, input)), {n_heads, head_dim});
+    const auto k = xt::reshape_view(m_kNorm.forward(xt::linalg::dot(m_kProj, input)), {n_heads, head_dim});
+    const auto v = xt::reshape_view(xt::linalg::dot(m_vProj, input), {n_heads, head_dim});
     // q, k, v are all (n_heads, head_dim)
 
     // apply RoPE
@@ -52,7 +52,7 @@ xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input)
     const auto attention_output = xt::reshape_view(weighted_sums, {n_heads * head_dim});
     // attention_output is (d_model,)
 
-    return xt::linalg::dot(attention_output, m_oProj);
+    return xt::linalg::dot(m_oProj, attention_output);
 }
 
 xt::xtensor<float, 2> OlmoAttention::apply_rope(const xt::xtensor<float, 2>& input, size_t position) {
