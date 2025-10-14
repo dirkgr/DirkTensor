@@ -17,7 +17,8 @@
       "Bash(cmake-build-relwithdebinfo/test_olmo_model)",
       "Bash(/Applications/CLion.app/Contents/bin/cmake/mac/x64/bin/ctest --output-on-failure)",
       "Bash(/Applications/CLion.app/Contents/bin/cmake/mac/x64/bin/cmake --version)",
-      "Bash(/Applications/CLion.app/Contents/bin/cmake/mac/x64/bin/cmake:*)"
+      "Bash(/Applications/CLion.app/Contents/bin/cmake/mac/x64/bin/cmake:*)",
+      "Bash(/Applications/CLion.app/Contents/bin/cmake/mac/x64/bin/ctest --output-on-failure -R test_olmo_model)"
     ],
     "deny": [],
     "ask": []
