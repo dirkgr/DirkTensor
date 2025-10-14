@@ -20,9 +20,9 @@ FetchContent_Declare(
     GIT_TAG 0.27.0
 )
 FetchContent_Declare(
-        xtensor-blas
-        GIT_REPOSITORY https://github.com/xtensor-stack/xtensor-blas.git
-        GIT_TAG 0.23.0
+    xtensor-blas
+    GIT_REPOSITORY https://github.com/xtensor-stack/xtensor-blas.git
+    GIT_TAG 0.23.0
 )
 
 # Make the libraries available
