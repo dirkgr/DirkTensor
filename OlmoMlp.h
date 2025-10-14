@@ -2,7 +2,6 @@
 
 #include <string>
 #include <xtensor/containers/xtensor.hpp>
-#include <xtensor-blas/xlinalg.hpp>
 
 class OlmoMlp {
 public:

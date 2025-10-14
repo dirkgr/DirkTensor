@@ -2,6 +2,8 @@
 
 #include <cassert>
 #include <xtensor/io/xnpy.hpp>
+#include <xtensor/views/xview.hpp>
+#include <xtensor-blas/xlinalg.hpp>
 
 OlmoModel::OlmoModel(const std::string& folder) : m_norm(folder + "/model.norm.weight.npy") {
     m_embeddings = xt::load_npy<float>(folder + "/model.embed_tokens.weight.npy");
