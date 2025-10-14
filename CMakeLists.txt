@@ -50,6 +50,7 @@ add_executable(DirkTensor
     OlmoAttention.h OlmoAttention.cpp
     OlmoBlock.h OlmoBlock.cpp
     OlmoModel.h OlmoModel.cpp
+    Detokenizer.h Detokenizer.cpp
 )
 
 # Link xtensor (header-only library)
@@ -73,11 +74,24 @@ add_executable(test_olmo_model
     OlmoAttention.h OlmoAttention.cpp
     OlmoBlock.h OlmoBlock.cpp
     OlmoModel.h OlmoModel.cpp
+    Detokenizer.h Detokenizer.cpp
 )
 
 target_link_libraries(test_olmo_model xtensor xtl xsimd xtensor-blas GTest::gtest GTest::gtest_main)
 target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_XSIMD)
 target_compile_options(test_olmo_model PRIVATE
+    $<$<CONFIG:Release>:-O3 -march=native -DNDEBUG>
+    $<$<CONFIG:Debug>:-O0 -g>
+)
+
+# Test executable for Detokenizer
+add_executable(test_detokenizer
+    test_detokenizer.cpp
+    Detokenizer.h Detokenizer.cpp
+)
+
+target_link_libraries(test_detokenizer GTest::gtest GTest::gtest_main)
+target_compile_options(test_detokenizer PRIVATE
     $<$<CONFIG:Release>:-O3 -march=native -DNDEBUG>
     $<$<CONFIG:Debug>:-O0 -g>
 )
@@ -89,6 +103,13 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(
     NAME test_olmo_model
     COMMAND test_olmo_model
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+# Add C++ test for Detokenizer
+add_test(
+    NAME test_detokenizer
+    COMMAND test_detokenizer
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
