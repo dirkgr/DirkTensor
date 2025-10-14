@@ -4,7 +4,6 @@
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/core/xmath.hpp>
 #include <xtensor/views/xview.hpp>
-#include <xtensor-blas/xlinalg.hpp>
 #include "RMSNorm.h"
 #include "model_config.h"
 

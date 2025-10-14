@@ -1,5 +1,6 @@
 #include "RMSNorm.h"
 
+#include <xtensor/core/xmath.hpp>
 #include <xtensor/io/xnpy.hpp>
 
 RMSNorm::RMSNorm(const std::string& filename) {

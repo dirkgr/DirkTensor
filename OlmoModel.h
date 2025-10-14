@@ -1,12 +1,9 @@
 #pragma once
 
-#include <string>
 #include <array>
 #include <memory>
-#include <cstdint>
+#include <string>
 #include <xtensor/containers/xtensor.hpp>
-#include <xtensor/views/xview.hpp>
-#include <xtensor-blas/xlinalg.hpp>
 #include "OlmoBlock.h"
 #include "RMSNorm.h"
 #include "model_config.h"

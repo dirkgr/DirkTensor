@@ -1,15 +1,11 @@
+#include <algorithm>
 #include <fstream>
 #include <iostream>
-#include <vector>
 #include <stdexcept>
-#include <iterator>
+#include <vector>
 
-#include <xtensor/containers/xarray.hpp>
 #include <xtensor/containers/xtensor.hpp>
-#include <xtensor/io/xio.hpp>
-#include <xtensor/views/xview.hpp>
 #include <xtensor/misc/xsort.hpp>
-#include <xtensor-blas/xlinalg.hpp>
 
 #include "OlmoModel.h"
 

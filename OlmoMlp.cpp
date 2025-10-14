@@ -1,7 +1,9 @@
 #include "OlmoMlp.h"
 
 #include <format>
+#include <xtensor/core/xmath.hpp>
 #include <xtensor/io/xnpy.hpp>
+#include <xtensor-blas/xlinalg.hpp>
 
 OlmoMlp::OlmoMlp(const std::string& folder, const unsigned int index) {
     m_upProjection =

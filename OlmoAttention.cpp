@@ -2,6 +2,7 @@
 
 #include <format>
 #include <xtensor/io/xnpy.hpp>
+#include <xtensor-blas/xlinalg.hpp>
 
 OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index) :
     m_qNorm(std::format("{}/model.layers.{}.self_attn.q_norm.weight.npy", folder, index)),
