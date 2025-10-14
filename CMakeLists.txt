@@ -3,6 +3,9 @@ project(DirkTensor)
 
 set(CMAKE_CXX_STANDARD 23)
 
+# Suppress deprecation warnings from dependencies
+set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
+
 include(FetchContent)
 
 # Enable testing
