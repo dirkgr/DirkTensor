@@ -8,7 +8,13 @@
       "Bash(git pull:*)",
       "Bash(git branch:*)",
       "Bash(c++:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(ninja:*)",
+      "Bash(/Applications/CLion.app/Contents/bin/ninja/mac/x64/ninja)",
+      "Bash(cmake-build-debug/DirkTensor fourscore.tokens.bin)",
+      "Bash(timeout 30 cmake-build-release/DirkTensor:*)",
+      "Bash(/Applications/CLion.app/Contents/bin/cmake/mac/x64/bin/cmake --build /Users/dirkgr/Documents/DirkTensor/cmake-build-relwithdebinfo --target test_olmo_model)",
+      "Bash(cmake-build-relwithdebinfo/test_olmo_model)"
     ],
     "deny": [],
     "ask": []
