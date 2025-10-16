@@ -43,12 +43,14 @@ int main(int argc, char* argv[]) {
     OlmoModel model("models/OLMo-2-0425-1B");
     Detokenizer detokenizer("models/OLMo-2-0425-1B/vocab.txt");
 
-    unsigned int tokens_left = 20;
     unsigned int next_token_id = 0;
 
-    for (size_t i = 0; i < tokens.size(); i++) {
-        std::cout << "token " << tokens(i) << " (\"" << detokenizer.decode(tokens(i)) << "\") ";
-        const xt::xtensor<float, 1> logits = -1 * model.forward(tokens(i)); // -1 to sort the highest logit first
+    for (size_t i = 0; i < 20; i++) {
+        if (i < tokens.size())
+            next_token_id = tokens(i);
+
+        std::cout << i << ": token " << next_token_id << " (\"" << detokenizer.decode(next_token_id) << "\") ";
+        const xt::xtensor<float, 1> logits = -1 * model.forward(next_token_id); // -1 to sort the highest logit first
         const auto tokens_in_order = xt::argsort(logits);
 
         std::cout << "Top 5 next tokens: ";
@@ -58,21 +60,7 @@ int main(int argc, char* argv[]) {
         std::cout << std::endl;
 
         next_token_id = tokens_in_order(0);
-        tokens_left -= 1;
     }
-
-    std::cout << detokenizer.decode(next_token_id);
-    std::cout.flush();
-
-    while(tokens_left > 0) {
-        const xt::xtensor<float, 1> logits = -1 * model.forward(next_token_id); // -1 to sort the highest logit first
-        const auto tokens_in_order = xt::argsort(logits);
-        next_token_id = tokens_in_order(0);
-        std::cout << detokenizer.decode(next_token_id);
-        std::cout.flush();
-        tokens_left -= 1;
-    }
-    std::cout << std::endl;
 
     return 0;
 }
