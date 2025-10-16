@@ -18,7 +18,7 @@ OlmoModel::OlmoModel(const std::string& folder) : m_norm(folder + "/model.norm.w
 
 xt::xtensor<float, 1> OlmoModel::forward(const uint32_t token) {
     // Embedding
-    auto x = xt::view(m_embeddings, token, xt::all());
+    xt::xtensor<float, 1> x = xt::view(m_embeddings, token, xt::all());
 
     // Blocks
     for(size_t i = 0; i < n_layers; i++)
