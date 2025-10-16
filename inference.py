@@ -53,12 +53,15 @@ def main():
 
     # Process input tokens
     with torch.no_grad():
-        for token_id in tokens:
-            decoded = tokenizer.decode([token_id])
-            print(f'token {token_id} ("{decoded}") ', end='')
+        for i in range(20):
+            if i < len(tokens):
+                next_token_id = tokens[i]
+
+            decoded = tokenizer.decode([next_token_id])
+            print(f'{i}: token {next_token_id} ("{decoded}") ', end='')
 
             # Forward pass with single token
-            input_ids = torch.tensor([[token_id]], dtype=torch.long)
+            input_ids = torch.tensor([[next_token_id]], dtype=torch.long)
             outputs = model(input_ids, past_key_values=past_key_values, use_cache=True)
             past_key_values = outputs.past_key_values
             logits = outputs.logits[0, -1, :]
@@ -69,30 +72,10 @@ def main():
 
             print("Top 5 next tokens: ", end='')
             for top_token in top5_tokens:
-                decoded_top = tokenizer.decode([top_token])
-                print(f'{top_token} ("{decoded_top}") ', end='')
+                print(f'{top_token} ', end='')
             print()
 
             next_token_id = top5_tokens[0]
-            tokens_left -= 1
-
-        # Continue generation
-        print(tokenizer.decode([next_token_id]), end='', flush=True)
-
-        while tokens_left > 0:
-            input_ids = torch.tensor([[next_token_id]], dtype=torch.long)
-            outputs = model(input_ids, past_key_values=past_key_values, use_cache=True)
-            past_key_values = outputs.past_key_values
-            logits = outputs.logits[0, -1, :]
-
-            top5_logits, top5_indices = torch.topk(logits, 5)
-            next_token_id = top5_indices[0].item()
-
-            print(tokenizer.decode([next_token_id]), end='', flush=True)
-            tokens_left -= 1
-
-        print()
-
 
 if __name__ == "__main__":
     main()
