@@ -37,9 +37,14 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/google/googletest.git
     GIT_TAG v1.15.2
 )
+FetchContent_Declare(
+    TBB
+    GIT_REPOSITORY https://github.com/oneapi-src/oneTBB.git
+    GIT_TAG v2021.13.0
+)
 
 # Make the libraries available
-FetchContent_MakeAvailable(xtl xsimd xtensor xtensor-blas googletest)
+FetchContent_MakeAvailable(xtl xsimd xtensor xtensor-blas googletest TBB)
 
 add_executable(DirkTensor
     main.cpp
@@ -54,10 +59,11 @@ add_executable(DirkTensor
 )
 
 # Link xtensor (header-only library)
-target_link_libraries(DirkTensor xtensor xtl xsimd xtensor-blas)
+target_link_libraries(DirkTensor xtensor xtl xsimd xtensor-blas TBB::tbb)
 
 # Enable xsimd for xtensor
 target_compile_definitions(DirkTensor PRIVATE XTENSOR_USE_XSIMD)
+target_compile_definitions(DirkTensor PRIVATE XTENSOR_USE_TBB)
 
 # Enable optimizations for release builds
 target_compile_options(DirkTensor PRIVATE
@@ -77,8 +83,9 @@ add_executable(test_olmo_model
     Detokenizer.h Detokenizer.cpp
 )
 
-target_link_libraries(test_olmo_model xtensor xtl xsimd xtensor-blas GTest::gtest GTest::gtest_main)
+target_link_libraries(test_olmo_model xtensor xtl xsimd xtensor-blas TBB::tbb GTest::gtest GTest::gtest_main)
 target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_XSIMD)
+target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_TBB)
 target_compile_options(test_olmo_model PRIVATE
     $<$<CONFIG:Release>:-O3 -march=native -DNDEBUG>
     $<$<CONFIG:Debug>:-O0 -g>
