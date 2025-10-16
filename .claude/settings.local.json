@@ -22,7 +22,8 @@
       "Bash(timeout:*)",
       "Bash(cmake-build-relwithdebinfo/DirkTensor fourscore.tokens.bin)",
       "Bash(python export_vocab.py:*)",
-      "Bash(cmake-build-relwithdebinfo/test_detokenizer)"
+      "Bash(cmake-build-relwithdebinfo/test_detokenizer)",
+      "Bash(/Applications/CLion.app/Contents/bin/cmake/mac/x64/bin/ctest --output-on-failure -R test_detokenizer)"
     ],
     "deny": [],
     "ask": []
