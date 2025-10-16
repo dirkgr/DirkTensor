@@ -42,7 +42,7 @@ xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input)
     // logits are (seq, n_heads)
 
     // softmax
-    const auto exp_logits = xt::exp(logits);
+    const auto exp_logits = xt::eval(xt::exp(logits));
     const auto exp_logits_sum = xt::sum(exp_logits, {0});
     const auto softmax = exp_logits / exp_logits_sum;
     // softmax is (seq, n_heads)
@@ -50,7 +50,7 @@ xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input)
     // apply weights to V
     const auto weighted_sums = xt::sum(vs * xt::view(softmax, xt::all(), xt::all(), xt::newaxis()), {0});
     // weighted_sums is (n_heads, head_dim)
-    const auto attention_output = xt::reshape_view(weighted_sums, {n_heads * head_dim});
+    const auto attention_output = xt::eval(xt::reshape_view(weighted_sums, {n_heads * head_dim}));
     // attention_output is (d_model,)
 
     return xt::linalg::dot(m_oProj, attention_output);
