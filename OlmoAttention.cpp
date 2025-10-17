@@ -2,7 +2,6 @@
 
 #include <format>
 #include <xtensor/io/xnpy.hpp>
-#include <xtensor/core/xnoalias.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
 OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index) :
@@ -17,29 +16,21 @@ OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index
     // kv cache
     m_kCache = xt::empty<float>({seq_len, n_heads, head_dim});
     m_vCache = xt::empty<float>({seq_len, n_heads, head_dim});
-
-    // Pre-allocate buffers
-    m_qBuffer = xt::empty<float>({n_heads, head_dim});
-    m_kBuffer = xt::empty<float>({n_heads, head_dim});
-    m_vBuffer = xt::empty<float>({n_heads, head_dim});
-    m_qRopeBuffer = xt::empty<float>({n_heads, head_dim});
-    m_kRopeBuffer = xt::empty<float>({n_heads, head_dim});
-    m_attnOutput = xt::empty<float>({d_model});
 }
 
 xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input) {
-    // Compute q, k, v into pre-allocated buffers using noalias
-    xt::noalias(m_qBuffer) = xt::reshape_view(m_qNorm.forward(xt::linalg::dot(m_qProj, input)), {n_heads, head_dim});
-    xt::noalias(m_kBuffer) = xt::reshape_view(m_kNorm.forward(xt::linalg::dot(m_kProj, input)), {n_heads, head_dim});
-    xt::noalias(m_vBuffer) = xt::reshape_view(xt::linalg::dot(m_vProj, input), {n_heads, head_dim});
+    const auto q = xt::reshape_view(m_qNorm.forward(xt::linalg::dot(m_qProj, input)), {n_heads, head_dim});
+    const auto k = xt::reshape_view(m_kNorm.forward(xt::linalg::dot(m_kProj, input)), {n_heads, head_dim});
+    const auto v = xt::reshape_view(xt::linalg::dot(m_vProj, input), {n_heads, head_dim});
+    // q, k, v are all (n_heads, head_dim)
 
-    // apply RoPE into pre-allocated buffers
-    xt::noalias(m_qRopeBuffer) = apply_rope(m_qBuffer, m_kvCacheEnd);
-    xt::noalias(m_kRopeBuffer) = apply_rope(m_kBuffer, m_kvCacheEnd);
+    // apply RoPE
+    const auto q_with_rope = apply_rope(q, m_kvCacheEnd);
+    const auto k_with_rope = apply_rope(k, m_kvCacheEnd);
 
     // put into cache
-    xt::noalias(xt::view(m_kCache, m_kvCacheEnd)) = m_kRopeBuffer;
-    xt::noalias(xt::view(m_vCache, m_kvCacheEnd)) = m_vBuffer;
+    xt::view(m_kCache, m_kvCacheEnd) = k_with_rope;
+    xt::view(m_vCache, m_kvCacheEnd) = v;
     m_kvCacheEnd += 1;
 
     const auto ks = xt::view(m_kCache, xt::range(0, m_kvCacheEnd));
@@ -47,7 +38,7 @@ xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input)
     // ks and vs are (seq, n_heads, head_dim)
 
     // attend
-    const auto logits = xt::sum(xt::view(m_qRopeBuffer, xt::newaxis(), xt::all()) * ks, {2}) / std::sqrt(head_dim);
+    const auto logits = xt::sum(xt::view(q_with_rope, xt::newaxis(), xt::all()) * ks, {2}) / std::sqrt(head_dim);
     // logits are (seq, n_heads)
 
     // softmax
@@ -59,9 +50,10 @@ xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input)
     // apply weights to V
     const auto weighted_sums = xt::sum(vs * xt::view(softmax, xt::all(), xt::all(), xt::newaxis()), {0});
     // weighted_sums is (n_heads, head_dim)
-    xt::noalias(m_attnOutput) = xt::reshape_view(weighted_sums, {n_heads * head_dim});
+    const auto attention_output = xt::eval(xt::reshape_view(weighted_sums, {n_heads * head_dim}));
+    // attention_output is (d_model,)
 
-    return xt::linalg::dot(m_oProj, m_attnOutput);
+    return xt::linalg::dot(m_oProj, attention_output);
 }
 
 xt::xtensor<float, 2> OlmoAttention::apply_rope(const xt::xtensor<float, 2>& input, size_t position) {
