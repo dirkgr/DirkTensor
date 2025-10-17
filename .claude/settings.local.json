@@ -25,7 +25,8 @@
       "Bash(cmake-build-relwithdebinfo/test_detokenizer)",
       "Bash(/Applications/CLion.app/Contents/bin/cmake/mac/x64/bin/ctest --output-on-failure -R test_detokenizer)",
       "Bash(/usr/bin/time:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(otool:*)"
     ],
     "deny": [],
     "ask": []
