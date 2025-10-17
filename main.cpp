@@ -1,11 +1,11 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <numeric>
 #include <stdexcept>
 #include <vector>
 
 #include <xtensor/containers/xtensor.hpp>
-#include <xtensor/misc/xsort.hpp>
 
 #include "Detokenizer.h"
 #include "OlmoModel.h"
@@ -50,16 +50,21 @@ int main(int argc, char* argv[]) {
             next_token_id = tokens(i);
 
         std::cout << i << ": token " << next_token_id << " (\"" << detokenizer.decode(next_token_id) << "\") ";
-        const xt::xtensor<float, 1> logits = -1 * model.forward(next_token_id); // -1 to sort the highest logit first
-        const auto tokens_in_order = xt::argsort(logits);
+        const xt::xtensor<float, 1> logits = model.forward(next_token_id);
+
+        // Find top 5 using partial sort instead of full argsort (much faster!)
+        std::vector<size_t> indices(logits.size());
+        std::iota(indices.begin(), indices.end(), 0);
+        std::partial_sort(indices.begin(), indices.begin() + 5, indices.end(),
+            [&logits](size_t i1, size_t i2) { return logits(i1) > logits(i2); });
 
         std::cout << "Top 5 next tokens: ";
         for (size_t j = 0; j < 5; j++) {
-            std::cout << tokens_in_order(j) << " (\"" << detokenizer.decode(tokens_in_order(j)) << "\") ";
+            std::cout << indices[j] << " (\"" << detokenizer.decode(indices[j]) << "\") ";
         }
         std::cout << std::endl;
 
-        next_token_id = tokens_in_order(0);
+        next_token_id = indices[0];
     }
 
     return 0;
