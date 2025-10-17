@@ -9,6 +9,6 @@ RMSNorm::RMSNorm(const std::string& filename) {
 
 xt::xtensor<float, 1> RMSNorm::forward(const xt::xtensor<float, 1>& input) {
     const auto rms = xt::sqrt(xt::mean(xt::square(input)) + eps);
-    const auto x = xt::eval(input / rms);
+    const auto x = input / rms;
     return x * m_weight;
 }
