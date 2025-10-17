@@ -47,4 +47,12 @@ private:
     xt::xtensor<float, 3> m_kCache; // (seq_len, n_heads, head_dim)
     xt::xtensor<float, 3> m_vCache; // (seq_len, n_heads, head_dim)
     size_t m_kvCacheEnd = 0;
+
+    // Pre-allocated buffers for forward pass (to reduce allocations)
+    mutable xt::xtensor<float, 2> m_qBuffer;      // (n_heads, head_dim)
+    mutable xt::xtensor<float, 2> m_kBuffer;      // (n_heads, head_dim)
+    mutable xt::xtensor<float, 2> m_vBuffer;      // (n_heads, head_dim)
+    mutable xt::xtensor<float, 2> m_qRopeBuffer;  // (n_heads, head_dim)
+    mutable xt::xtensor<float, 2> m_kRopeBuffer;  // (n_heads, head_dim)
+    mutable xt::xtensor<float, 1> m_attnOutput;   // (d_model)
 };

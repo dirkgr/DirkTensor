@@ -13,4 +13,5 @@ public:
 
 private:
     xt::xtensor<float, 1> m_weight;
+    mutable xt::xtensor<float, 1> m_xBuffer;  // Pre-allocated buffer for normalized values
 };
