@@ -68,9 +68,38 @@ Likely bottlenecks:
 - xtensor not reusing buffers like PyTorch does
 - Limited parallelization of small matrix operations
 
-Next to try:
-- Use xt::noalias() for in-place operations
-- Pre-allocate buffers and reuse them
-- Profile with Instruments to find exact hot spots
-- Consider rewriting hot paths with manual loops instead of xtensor
+## Profiling with Instruments (xctrace)
+
+Profiled with `xctrace record --template "Time Profiler"` on RelWithDebInfo build.
+
+### Key findings (122,426 total samples):
+- **15,932 samples (13.0%) marked as "unknown"** - large unattributable overhead
+- **Our computation code appears in < 0.1% of samples:**
+  - OlmoAttention::forward: 16 samples (0.0%)
+  - OlmoMlp::forward: 3 samples (0.0%)
+  - RMSNorm::forward: 2 samples (0.0%)
+  - main: 9 samples (0.0%)
+- **BLAS operations: only 53 samples total (0.1%)**
+- **Most samples in TBB threading overhead and system calls**
+
+### Interpretation:
+**The bottleneck is NOT in the forward pass computation!**
+
+This is surprising and suggests:
+1. Most time spent in program startup/model loading (reading .npy files)
+2. Dynamic library loading overhead
+3. Memory allocation outside the hot loops
+4. The actual computation may be fast but we're not reusing work
+
+This explains why:
+- High sys time (51s) - likely I/O and dynamic allocation
+- Low user/real ratio - not much actual CPU work happening
+- Optimizing forward passes had limited impact
+
+### Next steps:
+1. Profile just the inference loop (exclude startup)
+2. Measure model loading time separately
+3. Consider caching/reusing allocations across tokens
+4. Try more aggressive compiler flags (-Ofast, -ffast-math)
+5. Investigate if Python caches computations we're repeating
 
