@@ -1,5 +1,6 @@
 #include "OlmoAttention.h"
 
+#include <cmath>
 #include <format>
 #include <xtensor/io/xnpy.hpp>
 #include <xtensor-blas/xlinalg.hpp>
@@ -16,6 +17,31 @@ OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index
     // kv cache
     m_kCache = xt::empty<float>({seq_len, n_heads, head_dim});
     m_vCache = xt::empty<float>({seq_len, n_heads, head_dim});
+
+    // Precompute RoPE sin/cos tables manually for better performance
+    m_rope_sin.resize(seq_len * head_dim);
+    m_rope_cos.resize(seq_len * head_dim);
+
+    // Compute inverse frequencies: inv_freq[i] = 1.0 / (theta ^ (2i/head_dim))
+    std::vector<double> inv_freq(head_dim / 2);
+    for (size_t i = 0; i < head_dim / 2; ++i) {
+        inv_freq[i] = 1.0 / std::pow(theta, (2.0 * i) / head_dim);
+    }
+
+    // Compute sin/cos for each position and dimension
+    for (size_t pos = 0; pos < seq_len; ++pos) {
+        for (size_t i = 0; i < head_dim / 2; ++i) {
+            double angle = pos * inv_freq[i];
+            float sin_val = std::sin(angle);
+            float cos_val = std::cos(angle);
+
+            // Store twice (concatenated pattern from original implementation)
+            m_rope_sin[pos * head_dim + i] = sin_val;
+            m_rope_sin[pos * head_dim + head_dim/2 + i] = sin_val;
+            m_rope_cos[pos * head_dim + i] = cos_val;
+            m_rope_cos[pos * head_dim + head_dim/2 + i] = cos_val;
+        }
+    }
 }
 
 xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input) {
@@ -57,27 +83,29 @@ xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input)
 }
 
 xt::xtensor<float, 2> OlmoAttention::apply_rope(const xt::xtensor<float, 2>& input, size_t position) {
-    // input dimensions are (n_heads, head_dim)
+    // Manual implementation for better performance - avoids xtensor overhead and concatenate
+    // Input dimensions: (n_heads, head_dim)
 
-    static const auto [pos_sin, pos_cos] = rope_buffers();
+    xt::xtensor<float, 2> output = xt::empty<float>({n_heads, head_dim});
 
-    const auto cos_part = input * xt::view(pos_cos, position, xt::newaxis(), xt::all());
+    const float* sin_row = &m_rope_sin[position * head_dim];
+    const float* cos_row = &m_rope_cos[position * head_dim];
 
-    // rotate input around the head dimension
-    // Cool how we're using the word "rotate" to mean two totally different things here.
-    const auto rotated_input_first_half = xt::view(
-        input,
-        xt::all(),
-        xt::range(0, head_dim / 2));
-    const auto rotated_input_second_half = xt::view(
-        input,
-        xt::all(),
-        xt::range(head_dim / 2, head_dim));
-    const auto rotated_input =
-        xt::concatenate(std::tuple(-rotated_input_second_half, rotated_input_first_half), 1);
-    assert (rotated_input.shape() == input.shape());
+    // For each head
+    for (size_t head = 0; head < n_heads; ++head) {
+        const float* input_ptr = &input(head, 0);
+        float* output_ptr = &output(head, 0);
 
-    const auto sin_part = rotated_input * xt::view(pos_sin, position, xt::newaxis(), xt::all());
+        // Apply RoPE: output = input * cos + rotated(input) * sin
+        // Rotated means: [-input[64:128], input[0:64]]
+        for (size_t i = 0; i < head_dim / 2; ++i) {
+            // First half: output[i] = input[i] * cos[i] + (-input[i + half]) * sin[i]
+            output_ptr[i] = input_ptr[i] * cos_row[i] - input_ptr[i + head_dim/2] * sin_row[i];
 
-    return cos_part + sin_part;
+            // Second half: output[i+half] = input[i+half] * cos[i+half] + input[i] * sin[i+half]
+            output_ptr[i + head_dim/2] = input_ptr[i + head_dim/2] * cos_row[i + head_dim/2] + input_ptr[i] * sin_row[i + head_dim/2];
+        }
+    }
+
+    return output;
 }
