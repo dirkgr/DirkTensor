@@ -43,6 +43,10 @@ FetchContent_Declare(
     GIT_TAG v2021.13.0
 )
 
+# Find BLAS (uses Accelerate framework on macOS)
+find_package(BLAS REQUIRED)
+find_package(LAPACK REQUIRED)
+
 # Make the libraries available
 FetchContent_MakeAvailable(xtl xsimd xtensor xtensor-blas googletest TBB)
 
@@ -59,7 +63,7 @@ add_executable(DirkTensor
 )
 
 # Link xtensor (header-only library)
-target_link_libraries(DirkTensor xtensor xtl xsimd xtensor-blas TBB::tbb)
+target_link_libraries(DirkTensor xtensor xtl xsimd xtensor-blas TBB::tbb BLAS::BLAS LAPACK::LAPACK)
 
 # Enable xsimd for xtensor
 target_compile_definitions(DirkTensor PRIVATE XTENSOR_USE_XSIMD)
@@ -84,7 +88,7 @@ add_executable(test_olmo_model
     Detokenizer.h Detokenizer.cpp
 )
 
-target_link_libraries(test_olmo_model xtensor xtl xsimd xtensor-blas TBB::tbb GTest::gtest GTest::gtest_main)
+target_link_libraries(test_olmo_model xtensor xtl xsimd xtensor-blas TBB::tbb BLAS::BLAS LAPACK::LAPACK GTest::gtest GTest::gtest_main)
 target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_XSIMD)
 target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_TBB)
 target_compile_options(test_olmo_model PRIVATE
