@@ -68,6 +68,7 @@ target_compile_definitions(DirkTensor PRIVATE XTENSOR_USE_TBB)
 # Enable optimizations for release builds
 target_compile_options(DirkTensor PRIVATE
     $<$<CONFIG:Release>:-O3 -march=native -DNDEBUG>
+    $<$<CONFIG:RelWithDebInfo>:-O3 -march=native>
     $<$<CONFIG:Debug>:-O0 -g>
 )
 
@@ -88,6 +89,7 @@ target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_XSIMD)
 target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_TBB)
 target_compile_options(test_olmo_model PRIVATE
     $<$<CONFIG:Release>:-O3 -march=native -DNDEBUG>
+    $<$<CONFIG:RelWithDebInfo>:-O3 -march=native>
     $<$<CONFIG:Debug>:-O0 -g>
 )
 
