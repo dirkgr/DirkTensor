@@ -32,7 +32,10 @@
       "Bash(xctrace record:*)",
       "Bash(xctrace export:*)",
       "Read(//private/tmp/**)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(/dev/null)",
+      "Bash(echo \"Exit code: $?\")",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
