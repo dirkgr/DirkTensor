@@ -97,9 +97,50 @@ This explains why:
 - Optimizing forward passes had limited impact
 
 ### Next steps:
-1. Profile just the inference loop (exclude startup)
-2. Measure model loading time separately
-3. Consider caching/reusing allocations across tokens
-4. Try more aggressive compiler flags (-Ofast, -ffast-math)
-5. Investigate if Python caches computations we're repeating
+1. ~~Profile just the inference loop (exclude startup)~~ - Done!
+2. ~~Measure model loading time separately~~ - Done!
+
+## Detailed Timing Analysis
+
+Added timing instrumentation to both C++ and Python to measure where time is actually spent.
+
+### C++ Timing Breakdown (45.7s total):
+- Read tokens: 0ms (0%)
+- Load model: 6,325ms (13.8%)
+- Load detokenizer: 21ms (0%)
+- **Inference (20 iterations): 39,337ms (86.2%)**
+- **Per iteration: 1,967ms**
+
+### Python Timing Breakdown (8.3s total):
+- Read tokens: 0ms (0%)
+- Load tokenizer: 522ms (6.3%)
+- Load model: 467ms (5.6%)
+- **Inference (20 iterations): 7,330ms (88.1%)**
+- **Per iteration: 366ms**
+
+### Critical Finding: **C++ is 5.4x slower per iteration!**
+
+Initially suspected missing KV cache, but investigation showed:
+- ✅ C++ HAS KV cache implementation (OlmoAttention.h lines 47-49)
+- ✅ KV cache IS being used correctly (OlmoAttention.cpp lines 31-37)
+- ✅ Both C++ and Python use KV caching
+
+So why is C++ 5.4x slower?
+
+### Likely bottlenecks:
+1. **Memory allocations in apply_rope**: `xt::concatenate()` (OlmoAttention.cpp:77) allocates on every call
+   - Called 2x per attention layer (once for q, once for k)
+   - 16 layers × 2 = 32 allocations per token
+   - 20 tokens × 32 = 640 allocations total
+2. **xtensor expression template overhead**: Many intermediate temporaries in forward pass
+3. **Softmax implementation**: Could be optimized
+4. **Broadcasting operations**: exp_logits division might be inefficient
+5. **Python uses highly optimized PyTorch backend** (BLAS, MKL, or CUDA kernels)
+
+### Next optimization targets:
+1. Eliminate concatenate allocation in apply_rope (use pre-allocated buffer or in-place rotation)
+2. Profile specifically the attention forward pass to find hotspot
+3. Try -Ofast and -ffast-math compiler flags
+4. Consider SIMD vectorization for softmax
+5. Investigate xtensor vs manual loops for hot paths
 
