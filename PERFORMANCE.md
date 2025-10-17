@@ -171,10 +171,49 @@ Why is C++ still 2.4x slower than Python?
 4. **Broadcasting operations**: exp_logits division might be inefficient
 5. **Python uses highly optimized PyTorch backend** (BLAS, MKL, or CUDA kernels)
 
+## Re-profiling After -Ofast (with sample tool)
+
+After the -Ofast optimization, re-profiled to find remaining bottlenecks.
+
+**Total samples: 20,064**
+
+### Call hierarchy:
+- main: 16,310 samples (81%)
+  - OlmoModel::forward: 15,409 samples (77%)
+    - OlmoBlock::forward: 9,418 samples (47%)
+      - **OlmoAttention::forward: 5,410 samples (27%)**
+        - **OlmoAttention::apply_rope: 5,340 samples (26.6%)**
+          - OlmoAttention::rope_buffers(): 5,336 samples (26.6%)
+
+### Key finding: **RoPE is the bottleneck, NOT softmax!**
+
+**26.6% of total runtime** is spent in `apply_rope()`, specifically in the RoPE position encoding computation. This includes:
+- Concatenate operation for rotating the input (line 86-87 in OlmoAttention.cpp)
+- Broadcasting and element-wise multiplication with sin/cos buffers
+
+### Attempted optimizations of RoPE (all failed):
+1. **Pre-allocated buffer for concatenate**: Made it 23% SLOWER (1,101ms vs 895ms)
+   - Extra view assignments and member state overhead outweighed benefits
+2. **Move rope_buffers to constructor**: Hung during model loading
+   - Computing 16 layers × RoPE buffers at once was too expensive
+
+### Why RoPE is hard to optimize:
+- Concatenate operation is called 640 times (32× per token × 20 tokens)
+- But eliminating it with pre-allocated buffers adds overhead
+- The static rope_buffers() caching is already working efficiently
+- xtensor expression templates are doing their job
+
+### Remaining bottleneck analysis:
+The 2.4x gap to PyTorch is likely because:
+1. **RoPE (26.6%)**: PyTorch likely has hand-optimized RoPE kernels
+2. **Element-wise ops**: PyTorch's oneDNN/MKL-DNN kernels for softmax, exp, etc.
+3. **Memory layout**: PyTorch's tensor memory layout may be more cache-friendly
+4. **BLAS operations**: While we use Accelerate, PyTorch may use it more effectively
+
 ### Next optimization targets:
-1. Eliminate concatenate allocation in apply_rope (use pre-allocated buffer or in-place rotation)
-2. Profile specifically the attention forward pass to find hotspot
-3. Try -Ofast and -ffast-math compiler flags
-4. Consider SIMD vectorization for softmax
-5. Investigate xtensor vs manual loops for hot paths
+1. ~~Try -Ofast and -ffast-math compiler flags~~ ✓ Done! (2.2x speedup)
+2. ~~Profile specifically to find hotspot~~ ✓ Done! (Found RoPE is 26.6%)
+3. ~~Eliminate concatenate in apply_rope~~ ✗ Made it slower
+4. Accept the 2.4x gap - remaining optimizations would require rewriting hot paths in assembly/intrinsics
+5. Or: Try different xtensor usage patterns (more eval(), less lazy evaluation?)
 
