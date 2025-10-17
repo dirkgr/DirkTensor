@@ -31,17 +31,40 @@ Command: `time <program> fourscore.tokens.bin`
 - Real: 54.42s, User: 73.94s, Sys: 51.20s
 - Note: May have already been using BLAS implicitly
 
+### 4. Use partial_sort instead of full argsort for top-5
+- Result: 9% faster (49.48s vs 54.42s) ✓
+- Real: 49.48s, User: 68.89s, Sys: 51.61s
+- Sorting 100k+ tokens was expensive; partial_sort much better
+
+## Summary
+
+**Progress: 56.92s → 49.48s (13% improvement)**
+**Still 2.6x slower than Python (19.05s)**
+
+### Successful optimizations:
+1. Enable -O3 for RelWithDebInfo: 7% faster
+2. Use partial_sort for top-k: 9% faster
+
+### Failed optimizations:
+1. Adding xt::eval() everywhere: Made it slower
+2. Explicit BLAS linkage: Made it slower (may have been implicit before)
+
 ## Analysis
 
-**Current best: 51.09s (still 2.7x slower than Python's 19.05s)**
-
 Key observations:
-- Very high sys time (~51s) suggests memory allocation or system call bottleneck
-- Python's high user time (119.75s) vs low real time (19.05s) shows good parallelization
-- C++ not parallelizing well despite TBB being enabled
+- Very high sys time (~51s out of 49s real) suggests memory allocation bottleneck
+- User/real ratio only 1.39x (Python has 6.3x) - poor parallelization
+- TBB enabled but not helping much - operations may be too small to parallelize
+- xtensor expression templates likely creating many temporaries
+
+Likely bottlenecks:
+- Memory allocations in forward pass (exp, reshape, concatenate, etc.)
+- xtensor not reusing buffers like PyTorch does
+- Limited parallelization of small matrix operations
 
 Next to try:
-- Profile to find hot spots
-- Reduce memory allocations in attention mechanism
-- Check if TBB is actually parallelizing operations
+- Use xt::noalias() for in-place operations
+- Pre-allocate buffers and reuse them
+- Profile with Instruments to find exact hot spots
+- Consider rewriting hot paths with manual loops instead of xtensor
 
