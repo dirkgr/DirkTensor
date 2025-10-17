@@ -19,14 +19,14 @@ OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index
 }
 
 xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input) {
-    const auto q = xt::reshape_view(m_qNorm.forward(xt::linalg::dot(m_qProj, input)), {n_heads, head_dim});
-    const auto k = xt::reshape_view(m_kNorm.forward(xt::linalg::dot(m_kProj, input)), {n_heads, head_dim});
-    const auto v = xt::reshape_view(xt::linalg::dot(m_vProj, input), {n_heads, head_dim});
+    const auto q = xt::eval(xt::reshape_view(m_qNorm.forward(xt::linalg::dot(m_qProj, input)), {n_heads, head_dim}));
+    const auto k = xt::eval(xt::reshape_view(m_kNorm.forward(xt::linalg::dot(m_kProj, input)), {n_heads, head_dim}));
+    const auto v = xt::eval(xt::reshape_view(xt::linalg::dot(m_vProj, input), {n_heads, head_dim}));
     // q, k, v are all (n_heads, head_dim)
 
     // apply RoPE
-    const auto q_with_rope = apply_rope(q, m_kvCacheEnd);
-    const auto k_with_rope = apply_rope(k, m_kvCacheEnd);
+    const auto q_with_rope = xt::eval(apply_rope(q, m_kvCacheEnd));
+    const auto k_with_rope = xt::eval(apply_rope(k, m_kvCacheEnd));
 
     // put into cache
     xt::view(m_kCache, m_kvCacheEnd) = k_with_rope;
@@ -38,17 +38,17 @@ xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input)
     // ks and vs are (seq, n_heads, head_dim)
 
     // attend
-    const auto logits = xt::sum(xt::view(q_with_rope, xt::newaxis(), xt::all()) * ks, {2}) / std::sqrt(head_dim);
+    const auto logits = xt::eval(xt::sum(xt::view(q_with_rope, xt::newaxis(), xt::all()) * ks, {2}) / std::sqrt(head_dim));
     // logits are (seq, n_heads)
 
     // softmax
     const auto exp_logits = xt::eval(xt::exp(logits));
-    const auto exp_logits_sum = xt::sum(exp_logits, {0});
-    const auto softmax = exp_logits / exp_logits_sum;
+    const auto exp_logits_sum = xt::eval(xt::sum(exp_logits, {0}));
+    const auto softmax = xt::eval(exp_logits / exp_logits_sum);
     // softmax is (seq, n_heads)
 
     // apply weights to V
-    const auto weighted_sums = xt::sum(vs * xt::view(softmax, xt::all(), xt::all(), xt::newaxis()), {0});
+    const auto weighted_sums = xt::eval(xt::sum(vs * xt::view(softmax, xt::all(), xt::all(), xt::newaxis()), {0}));
     // weighted_sums is (n_heads, head_dim)
     const auto attention_output = xt::eval(xt::reshape_view(weighted_sums, {n_heads * head_dim}));
     // attention_output is (d_model,)
@@ -61,7 +61,7 @@ xt::xtensor<float, 2> OlmoAttention::apply_rope(const xt::xtensor<float, 2>& inp
 
     static const auto [pos_sin, pos_cos] = rope_buffers();
 
-    const auto cos_part = input * xt::view(pos_cos, position, xt::newaxis(), xt::all());
+    const auto cos_part = xt::eval(input * xt::view(pos_cos, position, xt::newaxis(), xt::all()));
 
     // rotate input around the head dimension
     // Cool how we're using the word "rotate" to mean two totally different things here.
@@ -74,10 +74,10 @@ xt::xtensor<float, 2> OlmoAttention::apply_rope(const xt::xtensor<float, 2>& inp
         xt::all(),
         xt::range(head_dim / 2, head_dim));
     const auto rotated_input =
-        xt::concatenate(std::tuple(-rotated_input_second_half, rotated_input_first_half), 1);
+        xt::eval(xt::concatenate(std::tuple(-rotated_input_second_half, rotated_input_first_half), 1));
     assert (rotated_input.shape() == input.shape());
 
-    const auto sin_part = rotated_input * xt::view(pos_sin, position, xt::newaxis(), xt::all());
+    const auto sin_part = xt::eval(rotated_input * xt::view(pos_sin, position, xt::newaxis(), xt::all()));
 
     return cos_part + sin_part;
 }
