@@ -71,8 +71,8 @@ target_compile_definitions(DirkTensor PRIVATE XTENSOR_USE_TBB)
 
 # Enable optimizations for release builds
 target_compile_options(DirkTensor PRIVATE
-    $<$<CONFIG:Release>:-O3 -march=native -DNDEBUG>
-    $<$<CONFIG:RelWithDebInfo>:-O3 -march=native>
+    $<$<CONFIG:Release>:-Ofast -march=native -ffast-math -DNDEBUG>
+    $<$<CONFIG:RelWithDebInfo>:-Ofast -march=native -ffast-math>
     $<$<CONFIG:Debug>:-O0 -g>
 )
 

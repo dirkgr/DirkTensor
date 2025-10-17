@@ -40,20 +40,29 @@ Command: `time <program> fourscore.tokens.bin`
 - Result: SLOWER (53.09s vs 49.48s)
 - Reverted
 
+### 6. Try -Ofast and -ffast-math compiler flags
+- Changed from `-O3` to `-Ofast -ffast-math`
+- Result: **MUCH FASTER (24.61s vs 45.69s)** ✓✓✓
+- Real: 24.61s, Per iteration: 895ms
+- **54% faster! 2.2x speedup!**
+- This is by far the biggest win
+
 ## Summary
 
-**Progress: 56.92s → 46.25s (19% improvement)**
-**Still 2.4x slower than Python (19.05s)**
+**Progress: 56.92s → 24.61s (57% improvement!)**
+**Now only 2.9x slower than Python (8.3s)**
 
 ### Successful optimizations:
 1. Enable -O3 for RelWithDebInfo: 7% faster
 2. Use partial_sort for top-k: 9% faster
-3. (Unexplained improvement after revert: ~3s faster, possibly build artifacts or measurement variance)
+3. **Use -Ofast -ffast-math: 54% faster! (2.2x speedup)** ⭐
+4. (Unexplained improvement after revert: ~3s faster, possibly build artifacts or measurement variance)
 
 ### Failed optimizations:
 1. Adding xt::eval() everywhere: Made it slower
 2. Explicit BLAS linkage: Made it slower (may have been implicit before)
 3. Pre-allocated buffers with xt::noalias(): Made it slower
+4. Pre-allocated RoPE buffer to avoid concatenate: Made it 2% slower
 
 ## Analysis
 
@@ -104,12 +113,21 @@ This explains why:
 
 Added timing instrumentation to both C++ and Python to measure where time is actually spent.
 
-### C++ Timing Breakdown (45.7s total):
+### C++ Timing Breakdown:
+
+**Before -Ofast (45.7s total):**
 - Read tokens: 0ms (0%)
 - Load model: 6,325ms (13.8%)
 - Load detokenizer: 21ms (0%)
-- **Inference (20 iterations): 39,337ms (86.2%)**
-- **Per iteration: 1,967ms**
+- Inference (20 iterations): 39,337ms (86.2%)
+- Per iteration: 1,967ms
+
+**After -Ofast (24.6s total):**
+- Read tokens: 0ms (0%)
+- Load model: 6,679ms (27.1%)
+- Load detokenizer: 21ms (0%)
+- **Inference (20 iterations): 17,906ms (72.8%)**
+- **Per iteration: 895ms** ✓
 
 ### Python Timing Breakdown (8.3s total):
 - Read tokens: 0ms (0%)
@@ -118,14 +136,30 @@ Added timing instrumentation to both C++ and Python to measure where time is act
 - **Inference (20 iterations): 7,330ms (88.1%)**
 - **Per iteration: 366ms**
 
-### Critical Finding: **C++ is 5.4x slower per iteration!**
+### Critical Finding: Compiler optimization flags make huge difference!
+
+**Before -Ofast:**
+- C++ per iteration: 1,967ms
+- Python per iteration: 366ms
+- **C++ was 5.4x slower**
+
+**After -Ofast:**
+- C++ per iteration: 895ms
+- Python per iteration: 366ms
+- **C++ now only 2.4x slower!**
 
 Initially suspected missing KV cache, but investigation showed:
 - ✅ C++ HAS KV cache implementation (OlmoAttention.h lines 47-49)
 - ✅ KV cache IS being used correctly (OlmoAttention.cpp lines 31-37)
 - ✅ Both C++ and Python use KV caching
 
-So why is C++ 5.4x slower?
+The real issue was compiler optimization. `-Ofast -ffast-math` enables:
+- Aggressive floating-point optimizations
+- Relaxed IEEE 754 compliance (allows reassociation, reciprocal approximations)
+- Auto-vectorization improvements
+- Loop optimizations
+
+Why is C++ still 2.4x slower than Python?
 
 ### Likely bottlenecks:
 1. **Memory allocations in apply_rope**: `xt::concatenate()` (OlmoAttention.cpp:77) allocates on every call
