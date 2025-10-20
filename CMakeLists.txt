@@ -50,6 +50,11 @@ find_package(LAPACK REQUIRED)
 # Make the libraries available
 FetchContent_MakeAvailable(xtl xsimd xtensor xtensor-blas googletest TBB)
 
+# Define optimization flags once for consistency across all targets
+set(OPTIMIZATION_FLAGS_RELEASE -O3 -march=native -ffast-math -fno-finite-math-only -DNDEBUG)
+set(OPTIMIZATION_FLAGS_RELWITHDEBINFO -O3 -march=native -ffast-math -fno-finite-math-only)
+set(OPTIMIZATION_FLAGS_DEBUG -O0 -g -ffast-math -fno-finite-math-only)
+
 add_executable(DirkTensor
     main.cpp
     xtutil.h
@@ -71,9 +76,9 @@ target_compile_definitions(DirkTensor PRIVATE XTENSOR_USE_TBB)
 
 # Enable optimizations for release builds
 target_compile_options(DirkTensor PRIVATE
-    $<$<CONFIG:Release>:-O3 -march=native -ffast-math -fno-finite-math-only -DNDEBUG>
-    $<$<CONFIG:RelWithDebInfo>:-O3 -march=native -ffast-math -fno-finite-math-only>
-    $<$<CONFIG:Debug>:-O0 -g -ffast-math -fno-finite-math-only>
+    $<$<CONFIG:Release>:${OPTIMIZATION_FLAGS_RELEASE}>
+    $<$<CONFIG:RelWithDebInfo>:${OPTIMIZATION_FLAGS_RELWITHDEBINFO}>
+    $<$<CONFIG:Debug>:${OPTIMIZATION_FLAGS_DEBUG}>
 )
 
 # Test executable for OlmoModel
@@ -92,9 +97,9 @@ target_link_libraries(test_olmo_model xtensor xtl xsimd xtensor-blas TBB::tbb BL
 target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_XSIMD)
 target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_TBB)
 target_compile_options(test_olmo_model PRIVATE
-    $<$<CONFIG:Release>:-O3 -march=native -DNDEBUG>
-    $<$<CONFIG:RelWithDebInfo>:-O3 -march=native>
-    $<$<CONFIG:Debug>:-O0 -g>
+    $<$<CONFIG:Release>:${OPTIMIZATION_FLAGS_RELEASE}>
+    $<$<CONFIG:RelWithDebInfo>:${OPTIMIZATION_FLAGS_RELWITHDEBINFO}>
+    $<$<CONFIG:Debug>:${OPTIMIZATION_FLAGS_DEBUG}>
 )
 
 # Test executable for Detokenizer
@@ -105,8 +110,9 @@ add_executable(test_detokenizer
 
 target_link_libraries(test_detokenizer GTest::gtest GTest::gtest_main)
 target_compile_options(test_detokenizer PRIVATE
-    $<$<CONFIG:Release>:-O3 -march=native -DNDEBUG>
-    $<$<CONFIG:Debug>:-O0 -g>
+    $<$<CONFIG:Release>:${OPTIMIZATION_FLAGS_RELEASE}>
+    $<$<CONFIG:RelWithDebInfo>:${OPTIMIZATION_FLAGS_RELWITHDEBINFO}>
+    $<$<CONFIG:Debug>:${OPTIMIZATION_FLAGS_DEBUG}>
 )
 
 # Find Python for running tests
