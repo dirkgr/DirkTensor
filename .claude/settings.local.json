@@ -25,17 +25,15 @@
       "Bash(cmake-build-relwithdebinfo/test_detokenizer)",
       "Bash(/Applications/CLion.app/Contents/bin/cmake/mac/x64/bin/ctest --output-on-failure -R test_detokenizer)",
       "Bash(/usr/bin/time:*)",
-      "Bash(git commit:*)",
       "Bash(otool:*)",
-      "Bash(git revert:*)",
       "Bash(xctrace list:*)",
       "Bash(xctrace record:*)",
       "Bash(xctrace export:*)",
-      "Read(//private/tmp/**)",
-      "Bash(python:*)",
-      "Bash(/dev/null)",
-      "Bash(echo \"Exit code: $?\")",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(/Applications/CLion.app/Contents/bin/cmake/mac/x64/bin/ctest --test-dir cmake-build-relwithdebinfo --output-on-failure -R test_olmo_model)",
+      "Bash(./test_olmo_model)",
+      "Bash(git log)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []
