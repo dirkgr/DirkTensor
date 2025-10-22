@@ -65,22 +65,22 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Extract top 5 in descending order
+        // Extract top 5 (heap pops in ascending order, so we get smallest to largest)
         std::vector<size_t> top5_indices;
         top5_indices.reserve(5);
         while (!min_heap.empty()) {
             top5_indices.push_back(min_heap.top().second);
             min_heap.pop();
         }
-        std::reverse(top5_indices.begin(), top5_indices.end());
 
+        // Print in descending order (largest first) by iterating backwards
         std::cout << "Top 5 next tokens: ";
-        for (size_t j = 0; j < 5; j++) {
+        for (int j = 4; j >= 0; --j) {
             std::cout << top5_indices[j] << " (\"" << detokenizer.decode(top5_indices[j]) << "\") ";
         }
         std::cout << std::endl;
 
-        next_token_id = top5_indices[0];
+        next_token_id = top5_indices.back();
     }
 
     return 0;
