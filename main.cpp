@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
-#include <numeric>
+#include <queue>
 #include <stdexcept>
 #include <vector>
 
@@ -52,19 +52,35 @@ int main(int argc, char* argv[]) {
         std::cout << i << ": token " << next_token_id << " (\"" << detokenizer.decode(next_token_id) << "\") ";
         const xt::xtensor<float, 1> logits = model.forward(next_token_id);
 
-        // Find top 5 using partial sort instead of full argsort (much faster!)
-        std::vector<size_t> indices(logits.size());
-        std::iota(indices.begin(), indices.end(), 0);
-        std::partial_sort(indices.begin(), indices.begin() + 5, indices.end(),
-            [&logits](size_t i1, size_t i2) { return logits(i1) > logits(i2); });
+        // Find top 5 using min-heap (avoids allocating 100k+ indices array)
+        using Pair = std::pair<float, size_t>;  // (logit_value, token_index)
+        std::priority_queue<Pair, std::vector<Pair>, std::greater<Pair>> min_heap;
+
+        for (size_t idx = 0; idx < logits.size(); ++idx) {
+            if (min_heap.size() < 5) {
+                min_heap.push({logits(idx), idx});
+            } else if (logits(idx) > min_heap.top().first) {
+                min_heap.pop();
+                min_heap.push({logits(idx), idx});
+            }
+        }
+
+        // Extract top 5 in descending order
+        std::vector<size_t> top5_indices;
+        top5_indices.reserve(5);
+        while (!min_heap.empty()) {
+            top5_indices.push_back(min_heap.top().second);
+            min_heap.pop();
+        }
+        std::reverse(top5_indices.begin(), top5_indices.end());
 
         std::cout << "Top 5 next tokens: ";
         for (size_t j = 0; j < 5; j++) {
-            std::cout << indices[j] << " (\"" << detokenizer.decode(indices[j]) << "\") ";
+            std::cout << top5_indices[j] << " (\"" << detokenizer.decode(top5_indices[j]) << "\") ";
         }
         std::cout << std::endl;
 
-        next_token_id = indices[0];
+        next_token_id = top5_indices[0];
     }
 
     return 0;
