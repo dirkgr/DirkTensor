@@ -5,22 +5,19 @@
 #include <xtensor/io/xnpy.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
-OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index) :
-    m_qNorm(std::format("{}/model.layers.{}.self_attn.q_norm.weight.npy", folder, index)),
-    m_kNorm(std::format("{}/model.layers.{}.self_attn.k_norm.weight.npy", folder, index))
-{
-    m_qProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.q_proj.weight.npy", folder, index));
-    m_kProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.k_proj.weight.npy", folder, index));
-    m_vProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.v_proj.weight.npy", folder, index));
-    m_oProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.o_proj.weight.npy", folder, index));
+// Static member definitions
+std::vector<float> OlmoAttention::s_rope_sin;
+std::vector<float> OlmoAttention::s_rope_cos;
 
-    // kv cache
-    m_kCache = xt::empty<float>({seq_len, n_heads, head_dim});
-    m_vCache = xt::empty<float>({seq_len, n_heads, head_dim});
+void OlmoAttention::init_rope_tables() {
+    // Only initialize once (check if already done)
+    if (!s_rope_sin.empty()) {
+        return;
+    }
 
     // Precompute RoPE sin/cos tables manually for better performance
-    m_rope_sin.resize(seq_len * head_dim);
-    m_rope_cos.resize(seq_len * head_dim);
+    s_rope_sin.resize(seq_len * head_dim);
+    s_rope_cos.resize(seq_len * head_dim);
 
     // Compute inverse frequencies: inv_freq[i] = 1.0 / (theta ^ (2i/head_dim))
     std::vector<double> inv_freq(head_dim / 2);
@@ -36,12 +33,29 @@ OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index
             float cos_val = std::cos(angle);
 
             // Store twice (concatenated pattern from original implementation)
-            m_rope_sin[pos * head_dim + i] = sin_val;
-            m_rope_sin[pos * head_dim + head_dim/2 + i] = sin_val;
-            m_rope_cos[pos * head_dim + i] = cos_val;
-            m_rope_cos[pos * head_dim + head_dim/2 + i] = cos_val;
+            s_rope_sin[pos * head_dim + i] = sin_val;
+            s_rope_sin[pos * head_dim + head_dim/2 + i] = sin_val;
+            s_rope_cos[pos * head_dim + i] = cos_val;
+            s_rope_cos[pos * head_dim + head_dim/2 + i] = cos_val;
         }
     }
+}
+
+OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index) :
+    m_qNorm(std::format("{}/model.layers.{}.self_attn.q_norm.weight.npy", folder, index)),
+    m_kNorm(std::format("{}/model.layers.{}.self_attn.k_norm.weight.npy", folder, index))
+{
+    m_qProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.q_proj.weight.npy", folder, index));
+    m_kProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.k_proj.weight.npy", folder, index));
+    m_vProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.v_proj.weight.npy", folder, index));
+    m_oProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.o_proj.weight.npy", folder, index));
+
+    // kv cache
+    m_kCache = xt::empty<float>({seq_len, n_heads, head_dim});
+    m_vCache = xt::empty<float>({seq_len, n_heads, head_dim});
+
+    // Initialize RoPE tables once (shared across all instances)
+    init_rope_tables();
 }
 
 xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input) {
@@ -88,8 +102,8 @@ xt::xtensor<float, 2> OlmoAttention::apply_rope(const xt::xtensor<float, 2>& inp
 
     xt::xtensor<float, 2> output = xt::empty<float>({n_heads, head_dim});
 
-    const float* sin_row = &m_rope_sin[position * head_dim];
-    const float* cos_row = &m_rope_cos[position * head_dim];
+    const float* sin_row = &s_rope_sin[position * head_dim];
+    const float* cos_row = &s_rope_cos[position * head_dim];
 
     // For each head
     for (size_t head = 0; head < n_heads; ++head) {
