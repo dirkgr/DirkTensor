@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
 Tokenize text using the dolma2 tokenizer and write token IDs as binary integers.
-
-Usage:
-    python tokenize_text.py "Hello world, this is a test!" output_tokens.bin
 """
 
 import sys
 import struct
 import logging
+import argparse
 from transformers import AutoTokenizer
 
 # Configure logging to stderr (bash-friendly)
@@ -54,17 +52,24 @@ def tokenize_and_save(text: str, output_file: str = None):
             output_stream.close()
 
 def main():
-    if len(sys.argv) < 2 or len(sys.argv) > 3:
-        logging.error("Usage: python tokenize_text.py <text> [output_file]")
-        logging.error("Examples:")
-        logging.error("  python tokenize_text.py \"Hello world!\" tokens.bin  # Write to file")
-        logging.error("  python tokenize_text.py \"Hello world!\"             # Write to stdout")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description='Tokenize text using the dolma2 tokenizer and write token IDs as binary integers.',
+        epilog='Examples:\n'
+               '  %(prog)s "Hello world!" tokens.bin  # Write to file\n'
+               '  %(prog)s "Hello world!"             # Write to stdout',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
 
-    text = sys.argv[1]
-    output_file = sys.argv[2] if len(sys.argv) == 3 else None
+    parser.add_argument('text',
+                        help='Text to tokenize')
+    parser.add_argument('output_file',
+                        nargs='?',
+                        default=None,
+                        help='Output file for token IDs (default: write to stdout)')
 
-    tokenize_and_save(text, output_file)
+    args = parser.parse_args()
+
+    tokenize_and_save(args.text, args.output_file)
 
 if __name__ == "__main__":
     main()
