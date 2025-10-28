@@ -3,3 +3,5 @@ C++ sure has changed since it was my main language...
 
 Since I wanted to learn, the core model code is not written with any LLM help.
 However, I let Claude optimize it afterwards, and after some encouragement it is now faster than PyTorch on CPU.
+
+There are some Python tools here to convert the model, run the tokenizer to produce data, and for debugging.
