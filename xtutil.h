@@ -3,7 +3,6 @@
 #include <iostream>
 
 #include <xtensor/core/xexpression.hpp>
-#include <xtensor/core/xnoalias.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
 
