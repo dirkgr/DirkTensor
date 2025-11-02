@@ -48,7 +48,6 @@ def main():
     )
     model.eval()
 
-    tokens_left = 20
     next_token_id = 0
     past_key_values = None
 
