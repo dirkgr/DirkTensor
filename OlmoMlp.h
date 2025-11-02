@@ -7,7 +7,7 @@ class OlmoMlp {
 public:
     OlmoMlp(const std::string& folder, unsigned int index);
 
-    xt::xtensor<float, 1> forward(const xt::xtensor<float, 1>& input);
+    xt::xtensor<float, 3> forward(const xt::xtensor<float, 3>& input);
 
 private:
     xt::xtensor<float, 2> m_upProjection;

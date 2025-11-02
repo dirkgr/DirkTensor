@@ -9,7 +9,7 @@ public:
 
     explicit RMSNorm(const std::string& filename);
 
-    xt::xtensor<float, 1> forward(const xt::xtensor<float, 1>& input);
+    xt::xtensor<float, 3> forward(const xt::xtensor<float, 3>& input);
 
 private:
     xt::xtensor<float, 1> m_weight;
