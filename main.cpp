@@ -27,12 +27,6 @@ xt::xtensor<uint32_t, 1> read_tokens(std::istream& input) {
 }
 
 int main(int argc, char* argv[]) {
-    #ifdef HAVE_CBLAS
-        std::cout << "HAVE_CBLAS is defined" << std::endl;
-    #else
-        std::cout << "HAVE_CBLAS is NOT defined - using fallback!" << std::endl;
-    #endif
-
     OlmoModel model("models/OLMo-2-0425-1B");
     const Detokenizer detokenizer("models/OLMo-2-0425-1B/vocab.txt");
 
