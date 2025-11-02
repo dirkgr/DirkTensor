@@ -11,6 +11,9 @@ include(FetchContent)
 # Enable testing
 enable_testing()
 
+find_package(BLAS REQUIRED)
+find_package(LAPACK REQUIRED)
+
 # Fetch xtl (required dependency for xtensor)
 FetchContent_Declare(
     xtl
@@ -64,7 +67,7 @@ add_executable(DirkTensor
 )
 
 # Link xtensor (header-only library)
-target_link_libraries(DirkTensor xtensor xtl xsimd xtensor-blas TBB::tbb)
+target_link_libraries(DirkTensor xtensor xtl xsimd xtensor-blas TBB::tbb ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 
 # Enable xsimd for xtensor
 target_compile_definitions(DirkTensor PRIVATE XTENSOR_USE_XSIMD)
