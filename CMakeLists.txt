@@ -14,6 +14,18 @@ enable_testing()
 find_package(BLAS REQUIRED)
 find_package(LAPACK REQUIRED)
 
+# Detect which BLAS implementation was found and set appropriate compile definitions
+if(BLAS_LIBRARIES MATCHES "Accelerate" OR BLAS_Accelerate_LIBRARY)
+    message(STATUS "Using Apple Accelerate framework for BLAS")
+    add_compile_definitions(WITH_VECLIB)
+elseif(BLAS_LIBRARIES MATCHES "openblas" OR BLAS_openblas_LIBRARY)
+    message(STATUS "Using OpenBLAS")
+    add_compile_definitions(WITH_OPENBLAS)
+elseif(BLAS_LIBRARIES MATCHES "mkl" OR BLAS_mkl_LIBRARY)
+    message(STATUS "Using Intel MKL")
+    add_compile_definitions(WITH_MKLBLAS)
+endif()
+
 # Fetch xtl (required dependency for xtensor)
 FetchContent_Declare(
     xtl
