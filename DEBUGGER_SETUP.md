@@ -48,6 +48,7 @@ Some CLion versions allow you to add LLDB commands per run configuration:
 The formatters handle:
 - `xt::xtensor<T, N>` - Fixed-rank tensors
 - `xt::xarray<T>` - Dynamic-rank tensors
+- Expression types - Results from operations like `xt::linalg::tensordot()`, `xt::reshape_view()`, etc. (may show as `const result_type` or `xfunction` types)
 - **Summary line**: Shows shape and prefix of formatted values (first ~60 chars)
 - **Child "values"**: Full formatted tensor with xtensor-style nested braces
 - **Floating point values**: Automatically rounded to 6 significant digits
@@ -62,6 +63,9 @@ float_tensor = shape=(2, 3) {{0.0120394,  0.165066, -0.0332385}, {0.0480167, -0.
 
 tensor_3d = shape=(2, 3, 4) {{{1, 1, 1, 1}, {1, ...
   └─ values: {{{1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}}, {{1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}}}
+
+projected_qs = shape=(1, 4, 2048) {{{ 0.570252,  0.350372, -0.319389, ...
+  └─ values: {{{ 0.570252,  0.350372, -0.319389, ..., 0.0130098, 0.462102, -0.00518558}, {...}}}
 ```
 
 Note:

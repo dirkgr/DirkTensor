@@ -8,7 +8,9 @@ import lldb
 def get_shape_from_xtensor(valobj):
     """Extract shape dimensions from an xtensor object"""
     # m_shape is in the base class xstrided_container
-    # It's a std::array whose actual data is in __elems_ (libc++) or _M_elems (libstdc++)
+    # It can be either:
+    # - std::array whose actual data is in __elems_ (libc++) or _M_elems (libstdc++)
+    # - svector (small vector) with m_data member
 
     # IMPORTANT: Get the non-synthetic value to access the raw C++ object
     raw_val = valobj.GetNonSyntheticValue()
@@ -29,20 +31,44 @@ def get_shape_from_xtensor(valobj):
 
     shape_dims = []
     if shape.IsValid():
-        # Shape is std::array<size_t, N>
-        # The actual data is in __elems_ (libc++) or _M_elems (libstdc++)
-        elems = shape.GetChildMemberWithName('__elems_')
-        if not elems.IsValid():
-            elems = shape.GetChildMemberWithName('_M_elems')
+        # First try svector (has m_data, m_begin, m_end)
+        m_data = shape.GetChildMemberWithName('m_data')
+        if m_data.IsValid():
+            # svector case - read from m_data
+            m_begin = shape.GetChildMemberWithName('m_begin')
+            m_end = shape.GetChildMemberWithName('m_end')
+            if m_begin.IsValid() and m_end.IsValid():
+                begin_addr = m_begin.GetValueAsUnsigned()
+                end_addr = m_end.GetValueAsUnsigned()
+                # Calculate number of elements
+                elem_type = m_begin.GetType().GetPointeeType()
+                if elem_type.IsValid():
+                    elem_size = elem_type.GetByteSize()
+                    if elem_size > 0:
+                        num_elems = (end_addr - begin_addr) // elem_size
+                        # Read from m_data array
+                        for i in range(min(num_elems, m_data.GetNumChildren())):
+                            elem = m_data.GetChildAtIndex(i)
+                            if elem.IsValid():
+                                val = elem.GetValueAsUnsigned(0)
+                                # Filter out garbage values (unreasonably large)
+                                if val < 1000000000:  # sanity check
+                                    shape_dims.append(val)
+        else:
+            # std::array case - Shape is std::array<size_t, N>
+            # The actual data is in __elems_ (libc++) or _M_elems (libstdc++)
+            elems = shape.GetChildMemberWithName('__elems_')
+            if not elems.IsValid():
+                elems = shape.GetChildMemberWithName('_M_elems')
 
-        if elems.IsValid():
-            # elems is a C array, iterate over it
-            num_dims = elems.GetNumChildren()
-            for i in range(num_dims):
-                elem = elems.GetChildAtIndex(i)
-                if elem.IsValid():
-                    val = elem.GetValueAsUnsigned(0)
-                    shape_dims.append(val)
+            if elems.IsValid():
+                # elems is a C array, iterate over it
+                num_dims = elems.GetNumChildren()
+                for i in range(num_dims):
+                    elem = elems.GetChildAtIndex(i)
+                    if elem.IsValid():
+                        val = elem.GetValueAsUnsigned(0)
+                        shape_dims.append(val)
 
     return shape_dims
 
@@ -256,6 +282,47 @@ def __lldb_init_module(debugger, internal_dict):
     debugger.HandleCommand(
         'type summary add -F xtensor_lldb.xtensor_summary '
         '-x "^xt::xarray<.*>$" '
+        '-w xtensor'
+    )
+
+    # Handle xarray_container (result type from tensordot, etc.)
+    debugger.HandleCommand(
+        'type summary add -F xtensor_lldb.xtensor_summary '
+        '-x "^xt::xarray_container<.*>$" '
+        '-w xtensor'
+    )
+
+    debugger.HandleCommand(
+        'type synthetic add '
+        '-l xtensor_lldb.XTensorSyntheticProvider '
+        '-x "^xt::xarray_container<.*>$" '
+        '-w xtensor'
+    )
+
+    # Handle xtensor expression types (xfunction, xview, etc.)
+    debugger.HandleCommand(
+        'type summary add -F xtensor_lldb.xtensor_summary '
+        '-x "^xt::xfunction<.*>$" '
+        '-w xtensor'
+    )
+
+    debugger.HandleCommand(
+        'type synthetic add '
+        '-l xtensor_lldb.XTensorSyntheticProvider '
+        '-x "^xt::xfunction<.*>$" '
+        '-w xtensor'
+    )
+
+    debugger.HandleCommand(
+        'type summary add -F xtensor_lldb.xtensor_summary '
+        '-x "^xt::xview<.*>$" '
+        '-w xtensor'
+    )
+
+    debugger.HandleCommand(
+        'type synthetic add '
+        '-l xtensor_lldb.XTensorSyntheticProvider '
+        '-x "^xt::xview<.*>$" '
         '-w xtensor'
     )
 
