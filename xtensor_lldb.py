@@ -73,35 +73,113 @@ def get_shape_from_xtensor(valobj):
     return shape_dims
 
 
-def get_data_values(valobj, max_values=4):
-    """Get the first few data values from the tensor"""
+def get_storage_from_container(valobj):
+    """Find m_storage in a container, checking base classes if needed"""
+    storage = valobj.GetChildMemberWithName('m_storage')
+    if storage.IsValid():
+        return storage
+
+    # Try base classes
+    for i in range(valobj.GetNumChildren()):
+        base = valobj.GetChildAtIndex(i)
+        if 'xstrided_container' in str(base.GetType()) or 'xarray_container' in str(base.GetType()):
+            storage = base.GetChildMemberWithName('m_storage')
+            if storage.IsValid():
+                return storage
+
+    return None
+
+
+def get_data_pointer(valobj):
+    """Get the data pointer and element type from a tensor or view"""
     raw_val = valobj.GetNonSyntheticValue()
     storage = raw_val.GetChildMemberWithName('m_storage')
 
+    if not storage.IsValid():
+        return None, None
+
+    # Try direct p_begin first (for containers)
+    p_begin = storage.GetChildMemberWithName('p_begin')
+
+    if not p_begin.IsValid() or p_begin.GetValueAsUnsigned() == 0:
+        # For views: m_storage.m_e points to the underlying expression
+        m_e = storage.GetChildMemberWithName('m_e')
+        if m_e.IsValid():
+            # Dereference the pointer to get the underlying expression
+            underlying = m_e.Dereference()
+            if underlying.IsValid():
+                # IMPORTANT: Get non-synthetic value to access raw C++ members
+                underlying_raw = underlying.GetNonSyntheticValue()
+                # Find m_storage in the underlying container (may be in base class)
+                underlying_storage = get_storage_from_container(underlying_raw)
+                if underlying_storage and underlying_storage.IsValid():
+                    p_begin = underlying_storage.GetChildMemberWithName('p_begin')
+
+    if p_begin.IsValid() and p_begin.GetValueAsUnsigned() != 0:
+        addr = p_begin.GetValueAsUnsigned()
+        elem_type = p_begin.GetType().GetPointeeType()
+        return addr, elem_type
+
+    return None, None
+
+
+def get_data_values(valobj, max_values=4):
+    """Get the first few data values from the tensor"""
+    addr, elem_type = get_data_pointer(valobj)
+
     values = []
-    if storage.IsValid():
-        # Try to get p_begin (for xt::uvector)
-        p_begin = storage.GetChildMemberWithName('p_begin')
-
-        if p_begin.IsValid() and p_begin.GetValueAsUnsigned() != 0:
-            # Get the actual pointer value
-            addr = p_begin.GetValueAsUnsigned()
-            # Get the type of elements (e.g., float)
-            elem_type = p_begin.GetType().GetPointeeType()
-
-            if elem_type.IsValid():
-                for i in range(max_values):
-                    # Create a value at the offset address
-                    elem_addr = addr + (i * elem_type.GetByteSize())
-                    elem = valobj.CreateValueFromAddress(f"elem_{i}", elem_addr, elem_type)
-                    if elem.IsValid():
-                        value = elem.GetValue()
-                        if value:
-                            values.append(value)
-                    else:
-                        break
+    if addr and elem_type and elem_type.IsValid():
+        for i in range(max_values):
+            # Create a value at the offset address
+            elem_addr = addr + (i * elem_type.GetByteSize())
+            elem = valobj.CreateValueFromAddress(f"elem_{i}", elem_addr, elem_type)
+            if elem.IsValid():
+                value = elem.GetValue()
+                if value:
+                    values.append(value)
+            else:
+                break
 
     return values
+
+
+def get_strides(valobj, shape_dims):
+    """Get strides for the tensor or view"""
+    raw_val = valobj.GetNonSyntheticValue()
+
+    # Try to get m_strides directly (for views and containers)
+    strides_obj = raw_val.GetChildMemberWithName('m_strides')
+
+    if not strides_obj.IsValid():
+        # Try in base class
+        for i in range(raw_val.GetNumChildren()):
+            base = raw_val.GetChildAtIndex(i)
+            if 'xstrided' in str(base.GetType()):
+                strides_obj = base.GetChildMemberWithName('m_strides')
+                if strides_obj.IsValid():
+                    break
+
+    strides = []
+    if strides_obj.IsValid():
+        # Try std::array (__elems_)
+        elems = strides_obj.GetChildMemberWithName('__elems_')
+        if not elems.IsValid():
+            elems = strides_obj.GetChildMemberWithName('_M_elems')
+
+        if elems.IsValid():
+            num_dims = min(len(shape_dims), elems.GetNumChildren())
+            for i in range(num_dims):
+                elem = elems.GetChildAtIndex(i)
+                if elem.IsValid():
+                    strides.append(elem.GetValueAsUnsigned(0))
+
+    # If we couldn't get strides, calculate default row-major strides
+    if not strides and shape_dims:
+        strides = [1]
+        for i in range(len(shape_dims) - 1, 0, -1):
+            strides.insert(0, strides[0] * shape_dims[i])
+
+    return strides
 
 
 def format_tensor_values(valobj, shape_dims, max_per_dim=3):
@@ -109,27 +187,23 @@ def format_tensor_values(valobj, shape_dims, max_per_dim=3):
     if not shape_dims:
         return ""
 
-    raw_val = valobj.GetNonSyntheticValue()
-    storage = raw_val.GetChildMemberWithName('m_storage')
-
-    if not storage.IsValid():
-        return ""
-
-    p_begin = storage.GetChildMemberWithName('p_begin')
-    if not p_begin.IsValid() or p_begin.GetValueAsUnsigned() == 0:
-        return ""
-
-    addr = p_begin.GetValueAsUnsigned()
-    elem_type = p_begin.GetType().GetPointeeType()
-
-    if not elem_type.IsValid():
+    addr, elem_type = get_data_pointer(valobj)
+    if not addr or not elem_type or not elem_type.IsValid():
         return ""
 
     elem_size = elem_type.GetByteSize()
 
+    # Get strides and offset for proper indexing
+    strides = get_strides(valobj, shape_dims)
+
+    # Get offset (for views)
+    raw_val = valobj.GetNonSyntheticValue()
+    m_offset = raw_val.GetChildMemberWithName('m_offset')
+    offset_value = m_offset.GetValueAsUnsigned(0) if m_offset.IsValid() else 0
+
     def read_value(index):
-        """Read a single value at the given flat index"""
-        elem_addr = addr + (index * elem_size)
+        """Read a single value at the given strided index"""
+        elem_addr = addr + ((offset_value + index) * elem_size)
         elem = valobj.CreateValueFromAddress(f"elem", elem_addr, elem_type)
         if elem.IsValid():
             val = elem.GetValue()
@@ -145,7 +219,14 @@ def format_tensor_values(valobj, shape_dims, max_per_dim=3):
                     return val
         return "?"
 
-    def format_recursive(dims, offset):
+    def compute_index(indices):
+        """Compute flat index from multi-dimensional indices using strides"""
+        idx = 0
+        for i, stride in zip(indices, strides):
+            idx += i * stride
+        return idx
+
+    def format_recursive(dims, dim_indices):
         """Recursively format tensor dimensions"""
         if len(dims) == 0:
             return ""
@@ -158,43 +239,45 @@ def format_tensor_values(valobj, shape_dims, max_per_dim=3):
             if n <= max_per_dim * 2:
                 # Show all values
                 for i in range(n):
-                    values.append(read_value(offset + i))
+                    indices = dim_indices + [i]
+                    flat_idx = compute_index(indices)
+                    values.append(read_value(flat_idx))
             else:
                 # Show first few, ..., last few
                 for i in range(max_per_dim):
-                    values.append(read_value(offset + i))
+                    indices = dim_indices + [i]
+                    flat_idx = compute_index(indices)
+                    values.append(read_value(flat_idx))
                 values.append("...")
                 for i in range(n - max_per_dim, n):
-                    values.append(read_value(offset + i))
+                    indices = dim_indices + [i]
+                    flat_idx = compute_index(indices)
+                    values.append(read_value(flat_idx))
 
             return "{" + ", ".join(f"{v:>9}" if v != "..." else v for v in values) + "}"
 
         # Multiple dimensions - recurse
         n = dims[0]
-        stride = 1
-        for d in dims[1:]:
-            stride *= d
-
         parts = []
 
         if n <= max_per_dim * 2:
             # Show all sub-tensors
             for i in range(n):
-                sub = format_recursive(dims[1:], offset + i * stride)
+                sub = format_recursive(dims[1:], dim_indices + [i])
                 parts.append(sub)
         else:
             # Show first few, ..., last few
             for i in range(max_per_dim):
-                sub = format_recursive(dims[1:], offset + i * stride)
+                sub = format_recursive(dims[1:], dim_indices + [i])
                 parts.append(sub)
             parts.append("...")
             for i in range(n - max_per_dim, n):
-                sub = format_recursive(dims[1:], offset + i * stride)
+                sub = format_recursive(dims[1:], dim_indices + [i])
                 parts.append(sub)
 
         return "{" + ", ".join(parts) + "}"
 
-    return format_recursive(shape_dims, 0)
+    return format_recursive(shape_dims, [])
 
 
 class XTensorSyntheticProvider:
@@ -323,6 +406,19 @@ def __lldb_init_module(debugger, internal_dict):
         'type synthetic add '
         '-l xtensor_lldb.XTensorSyntheticProvider '
         '-x "^xt::xview<.*>$" '
+        '-w xtensor'
+    )
+
+    debugger.HandleCommand(
+        'type summary add -F xtensor_lldb.xtensor_summary '
+        '-x "^xt::xstrided_view<.*>$" '
+        '-w xtensor'
+    )
+
+    debugger.HandleCommand(
+        'type synthetic add '
+        '-l xtensor_lldb.XTensorSyntheticProvider '
+        '-x "^xt::xstrided_view<.*>$" '
         '-w xtensor'
     )
 
