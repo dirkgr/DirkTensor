@@ -68,9 +68,10 @@ xt::xtensor<float, 3> OlmoAttention::forward(const xt::xtensor<float, 3>& input)
             const auto k = xt::view(ks_with_rope, b, xt::range(0, position + 1)); // causal mask is in here
             const auto v = xt::view(vs, b, xt::range(0, position + 1));
             const auto logits = xt::sum(q * k, {2}) / std::sqrt(head_dim);
-            const auto exp_logits = xt::eval(xt::exp(logits));
-            const auto exp_logits_sum = xt::sum(exp_logits, {0});
-            const auto softmax = exp_logits / exp_logits_sum;
+
+            auto softmax = xt::eval(xt::exp(logits));
+            const auto exp_logits_sum = xt::eval(xt::sum(softmax, {0}));
+            softmax /= exp_logits_sum;
             // softmax is (seq, n_heads)
 
             // apply weights to V
