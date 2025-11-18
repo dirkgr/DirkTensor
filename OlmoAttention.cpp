@@ -89,42 +89,30 @@ xt::xtensor<float, 3> OlmoAttention::forward(const xt::xtensor<float, 3>& input)
 
 xt::xtensor<float, 4> OlmoAttention::apply_rope(const xt::xtensor<float, 4>& input) {
     // Input dimensions: (batch_size, seq_len, n_heads, head_dim)
+    const auto batch_size = input.shape(0);
     const auto seq_len = input.shape(1);
 
     static const auto [pos_sin, pos_cos] = rope_buffers();
     // rope buffers are (seq_len, head_dim)
 
-    const auto cos_part = input * xt::view(
-        pos_cos,
-        xt::newaxis(),
-        xt::range(0, seq_len),
-        xt::newaxis(),
-        xt::all());
+    auto output = xt::zeros_like(input);
+    for (size_t b = 0; b < batch_size; ++b) {
+        for (size_t position = 0; position < seq_len; ++position) {
+            for (size_t head = 0; head < n_heads; ++head) {
+                // sin part first half
+                xt::view(output, b, position, head, xt::range(0, head_dim / 2)) =
+                    -xt::view(input, b, position, head, xt::range(head_dim / 2, head_dim));
+                xt::view(output, b, position, head, xt::range(head_dim / 2, head_dim)) =
+                    xt::view(input, b, position, head, xt::range(0, head_dim / 2));
+                xt::view(output, b, position, head, xt::all()) *=
+                    xt::view(pos_sin, position);
 
-    // rotate input around the head dimension
-    // Cool how we're using the word "rotate" to mean two totally different things here.
-    const auto rotated_input_first_half = xt::view(
-        input,
-        xt::all(),
-        xt::all(),
-        xt::all(),
-        xt::range(0, head_dim / 2));
-    const auto rotated_input_second_half = xt::view(
-        input,
-        xt::all(),
-        xt::all(),
-        xt::all(),
-        xt::range(head_dim / 2, head_dim));
-    const auto rotated_input =
-        xt::eval(xt::concatenate(std::tuple(-rotated_input_second_half, rotated_input_first_half), 3));
-
-    assert (rotated_input.shape() == input.shape());
-    const auto sin_part = rotated_input * xt::view(
-        pos_sin,
-        xt::newaxis(),
-        xt::range(0, seq_len),
-        xt::newaxis(),
-        xt::all());
-
-    return cos_part + sin_part;
+                // cos part
+                xt::view(output, b, position, head, xt::all()) +=
+                    xt::view(input, b, position, head, xt::all()) * \
+                    xt::view(pos_cos, position);
+            }
+        }
+    }
+    return output;
 }
