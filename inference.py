@@ -65,6 +65,7 @@ def main():
         logits = outputs.logits
 
     # Print logits
+    print(logits.shape)
     print(logits)
 
 if __name__ == "__main__":
