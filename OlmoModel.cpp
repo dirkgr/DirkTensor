@@ -41,5 +41,5 @@ xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) 
     x = m_norm.forward(x);
 
     // LM Head
-    return batched_projection(x, m_lmHead);
+    return xt::linalg::tensordot(x, m_lmHead, {2}, {1});
 }
