@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <format>
+#include <xtensor/core/xnoalias.hpp>
 #include <xtensor/io/xnpy.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
@@ -61,28 +62,34 @@ xt::xtensor<float, 3> OlmoAttention::forward(const xt::xtensor<float, 3>& input)
     const auto ks_with_rope = xt::eval(apply_rope(ks));
 
     // attend
+
     auto attention_output = xt::zeros_like(input);
-    for (size_t b = 0; b < batch_size; ++b) {
-        for (size_t position = 0; position < seq_len; ++position) {
-            const auto q = xt::view(qs_with_rope, b, position, xt::newaxis(), xt::all());
-            const auto k = xt::view(ks_with_rope, b, xt::range(0, position + 1)); // causal mask is in here
-            const auto v = xt::view(vs, b, xt::range(0, position + 1));
-            const auto logits = xt::sum(q * k, {2}) / std::sqrt(head_dim);
+    tbb::parallel_for(
+        tbb::blocked_range2d<size_t>(0, batch_size, 0, seq_len),
+        [&](const tbb::blocked_range2d<size_t>& r) {
+            for (size_t b = r.rows().begin(); b != r.rows().end(); ++b) {
+                for (size_t position = r.cols().begin(); position != r.cols().end(); ++position) {
+                    const auto q = xt::view(qs_with_rope, b, position, xt::newaxis(), xt::all());
+                    const auto k = xt::view(ks_with_rope, b, xt::range(0, position + 1)); // causal mask is in here
+                    const auto v = xt::view(vs, b, xt::range(0, position + 1));
+                    const auto logits = xt::sum(q * k, {2}) / std::sqrt(head_dim);
 
-            auto softmax = xt::eval(xt::exp(logits));
-            const auto exp_logits_sum = xt::eval(xt::sum(softmax, {0}));
-            xt::noalias(softmax) /= exp_logits_sum;
-            // softmax is (seq, n_heads)
+                    auto softmax = xt::eval(xt::exp(logits));
+                    const auto exp_logits_sum = xt::eval(xt::sum(softmax, {0}));
+                    xt::noalias(softmax) /= exp_logits_sum;
+                    // softmax is (seq, n_heads)
 
-            // apply weights to V
-            const auto weighted_sums =
-                xt::sum(v * xt::view(softmax, xt::all(), xt::all(), xt::newaxis()), {0});
-            // weighted_sums is (n_heads, head_dim)
+                    // apply weights to V
+                    const auto weighted_sums =
+                        xt::sum(v * xt::view(softmax, xt::all(), xt::all(), xt::newaxis()), {0});
+                    // weighted_sums is (n_heads, head_dim)
 
-            xt::noalias(xt::view(attention_output, b, position)) +=
-                xt::reshape_view(weighted_sums, {n_heads * head_dim});
+                    xt::noalias(xt::view(attention_output, b, position)) +=
+                        xt::reshape_view(weighted_sums, {n_heads * head_dim});
+                }
+            }
         }
-    }
+    );
 
     return xt::linalg::tensordot(attention_output, m_oProj, {2}, {1});
 }
