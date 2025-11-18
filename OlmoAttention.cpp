@@ -71,7 +71,7 @@ xt::xtensor<float, 3> OlmoAttention::forward(const xt::xtensor<float, 3>& input)
 
             auto softmax = xt::eval(xt::exp(logits));
             const auto exp_logits_sum = xt::eval(xt::sum(softmax, {0}));
-            softmax /= exp_logits_sum;
+            xt::noalias(softmax) /= exp_logits_sum;
             // softmax is (seq, n_heads)
 
             // apply weights to V
@@ -79,7 +79,7 @@ xt::xtensor<float, 3> OlmoAttention::forward(const xt::xtensor<float, 3>& input)
                 xt::sum(v * xt::view(softmax, xt::all(), xt::all(), xt::newaxis()), {0});
             // weighted_sums is (n_heads, head_dim)
 
-            xt::view(attention_output, b, position) +=
+            xt::noalias(xt::view(attention_output, b, position)) +=
                 xt::reshape_view(weighted_sums, {n_heads * head_dim});
         }
     }
@@ -101,15 +101,15 @@ xt::xtensor<float, 4> OlmoAttention::apply_rope(const xt::xtensor<float, 4>& inp
         for (size_t position = 0; position < seq_len; ++position) {
             for (size_t head = 0; head < n_heads; ++head) {
                 // sin part first half
-                xt::view(output, b, position, head, xt::range(0, head_dim / 2)) =
+                xt::noalias(xt::view(output, b, position, head, xt::range(0, head_dim / 2))) =
                     -xt::view(input, b, position, head, xt::range(head_dim / 2, head_dim));
-                xt::view(output, b, position, head, xt::range(head_dim / 2, head_dim)) =
+                xt::noalias(xt::view(output, b, position, head, xt::range(head_dim / 2, head_dim))) =
                     xt::view(input, b, position, head, xt::range(0, head_dim / 2));
-                xt::view(output, b, position, head, xt::all()) *=
+                xt::noalias(xt::view(output, b, position, head, xt::all())) *=
                     xt::view(pos_sin, position);
 
                 // cos part
-                xt::view(output, b, position, head, xt::all()) +=
+                xt::noalias(xt::view(output, b, position, head, xt::all())) +=
                     xt::view(input, b, position, head, xt::all()) * \
                     xt::view(pos_cos, position);
             }
