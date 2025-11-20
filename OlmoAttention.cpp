@@ -4,6 +4,7 @@
 #include <format>
 #include <xtensor/io/xnpy.hpp>
 #include <xtensor-blas/xlinalg.hpp>
+#include <xtensor/core/xnoalias.hpp>
 
 #include "xtutil.h"
 #include "model_config.h"
