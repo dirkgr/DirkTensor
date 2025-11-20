@@ -45,9 +45,9 @@ int main(int argc, char* argv[]) {
     // File I/O and batch building
     auto io_start = Clock::now();
 
-    // Build batch - note the variable shadowing issue here (using global max_seq_len)
-    auto batch = xt::empty<uint32_t>({static_cast<unsigned int>(argc - 1), max_seq_len});
-    size_t max_seq_len = 0;  // This shadows the global max_seq_len = 4096
+    // First pass: read files and determine actual max sequence length
+    std::vector<xt::xtensor<uint32_t, 1>> all_tokens;
+    size_t actual_max_len = 0;
     size_t total_tokens = 0;
 
     for(int i = 1; i < argc; ++i) {
@@ -55,19 +55,27 @@ int main(int argc, char* argv[]) {
         if (!file)
             throw std::runtime_error("Cannot open file: " + std::string(argv[i]));
         auto tokens = read_tokens(file);
+        all_tokens.push_back(tokens);
         total_tokens += tokens.size();
+        actual_max_len = std::max(actual_max_len, tokens.size());
         std::cerr << "Read " << tokens.size() << " tokens from " << argv[i] << std::endl;
-
-        max_seq_len = std::max(max_seq_len, tokens.size());
-        if(tokens.size() > max_seq_len)
-            tokens = xt::view(tokens, 0, max_seq_len);
-        xt::view(batch, i - 1, xt::range(0, tokens.size())) = tokens;
-        xt::view(batch, i - 1, xt::range(tokens.size(), max_seq_len)) = detokenizer.get_pad_token_id();
     }
-    batch = xt::view(batch, xt::all(), xt::range(0, max_seq_len));
+
+    // Build batch with actual size needed (not 4096)
+    auto batch = xt::empty<uint32_t>({static_cast<unsigned int>(argc - 1), static_cast<unsigned int>(actual_max_len)});
+
+    // Fill batch with tokens and padding
+    for(size_t i = 0; i < all_tokens.size(); ++i) {
+        const auto& tokens = all_tokens[i];
+        size_t len = std::min(tokens.size(), actual_max_len);
+        xt::view(batch, i, xt::range(0, len)) = xt::view(tokens, xt::range(0, len));
+        if(len < actual_max_len) {
+            xt::view(batch, i, xt::range(len, actual_max_len)) = detokenizer.get_pad_token_id();
+        }
+    }
 
     Duration io_time = Clock::now() - io_start;
-    std::cerr << "Max sequence length: " << max_seq_len << ", Total tokens: " << total_tokens << std::endl;
+    std::cerr << "Max sequence length: " << actual_max_len << ", Total tokens: " << total_tokens << std::endl;
 
     // Warm-up run
     std::cerr << "\nRunning warm-up pass..." << std::endl;
