@@ -49,8 +49,34 @@ Optimize the C++ implementation to match or exceed the Python/PyTorch implementa
 #### Experiment 1.1: Add Timing Infrastructure
 **Date**: 2025-11-19
 **Hypothesis**: Need accurate timing to measure optimization impact
-**Changes**: Adding std::chrono timing to both implementations
-**Status**: In Progress
+**Changes**: Added std::chrono timing to C++ and time.perf_counter to Python
+**Status**: COMPLETED
+**Result**: Successfully added comprehensive timing to both implementations
+
+#### Experiment 1.2: Fix Variable Shadowing
+**Date**: 2025-11-19
+**Commit**: f91d1c0
+**Hypothesis**: Variable shadowing causes confusion and wastes memory
+**Changes**: Renamed local max_seq_len to actual_max_len, allocate batch with actual size
+**Result**: Cleaner code, ~35x less memory for small inputs
+**Performance Impact**: Minimal (main bottleneck is elsewhere)
+
+### Phase 2: High-Impact Optimizations
+
+#### Experiment 2.1: Rewrite Attention Mechanism (ATTEMPTED)
+**Date**: 2025-11-19
+**Hypothesis**: Nested position-by-position loops are the main bottleneck
+**Changes**: Attempted to use xt::linalg::dot for batched GEMM operations
+**Status**: REVERTED - Layout issues with xtensor-blas on strided views
+**Lesson**: Need simpler optimizations first or different approach to BLAS
+
+#### Experiment 2.2: Vectorize MLP SiLU Activation
+**Date**: 2025-11-19
+**Hypothesis**: Scalar loop for SiLU can be vectorized with xtensor
+**Changes**: Replaced element-wise loop with xtensor expression templates
+**Before**: for(i) { x[i] = x[i]/(1+exp(-x[i])) * proj[i] }
+**After**: silu = gate / (1 + xt::exp(-gate)) * projected
+**Status**: Testing...
 
 ---
 
