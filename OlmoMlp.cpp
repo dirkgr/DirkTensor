@@ -18,10 +18,18 @@ OlmoMlp::OlmoMlp(const std::string& folder, const unsigned int index) {
 }
 
 xt::xtensor<float, 3> OlmoMlp::forward(const xt::xtensor<float, 3>& input) {
-    const auto projected = xt::linalg::tensordot(input, m_upProjection, {2}, {1});
-    const auto gate = xt::linalg::tensordot(input, m_gateProjection, {2}, {1});
-    const auto silu = gate / (1.0f + xt::exp(-gate));
-    const auto result = xt::linalg::tensordot(projected * silu, m_downProjection, {2}, {1});
+    const auto projected = xt::eval(xt::linalg::tensordot(input, m_upProjection, {2}, {1}));
+
+    auto x = xt::eval(xt::linalg::tensordot(input, m_gateProjection, {2}, {1}));
+    assert(x.size() == projected.size());
+    for (size_t i = 0; i < x.size(); i++) {
+        float v = x.flat(i);
+        v = v / (1.0f + std::exp(-v));
+        v *= projected.flat(i);
+        x.flat(i) = v;
+    }
+
+    const auto result = xt::linalg::tensordot(x, m_downProjection, {2}, {1});
 
     return result;
 }
