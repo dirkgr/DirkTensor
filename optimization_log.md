@@ -156,3 +156,37 @@ Optimize the C++ implementation to match or exceed the Python/PyTorch implementa
 7. ⏳ Vectorize RoPE
 8. ⏳ Reduce materializations
 9. ⏳ Re-enable parallelization
+---
+
+## Performance Summary
+
+### Final Results (2025-11-19)
+
+**Python Baseline:**
+- Forward pass: 1.89 seconds
+- Throughput: 61.9 tokens/sec
+
+**C++ Optimized:**
+- Forward pass: 13.3 seconds (from 40.25s baseline)
+- Throughput: 8.8 tokens/sec (from 2.9 baseline)
+- **Total speedup: 3x**
+- **Gap to Python: 7x slower** (improved from 19.4x slower)
+
+### Optimization Impact
+
+| Optimization | Time Reduction | Speedup |
+|--------------|---------------|---------|
+| MLP with BLAS | 40.25s → 19.7s | 2.0x |
+| Attention projections | 19.7s → 13.3s | 1.5x |
+| **Total** | **40.25s → 13.3s** | **3.0x** |
+
+### Current Bottlenecks
+- Attention computation loop: 84.7% of runtime (8.2s)
+- MLP: 13.5% of runtime (1.3s)
+- Norms: 1.8% of runtime (0.2s)
+
+### Remaining Opportunities
+1. **Attention computation loop** - The nested position-by-position loops are still inefficient
+2. **RoPE implementation** - Triple-nested loops could be vectorized
+3. **TBB parallelization** - Was disabled in earlier commits but showed 10s improvement
+4. **Memory allocations** - Reduce temporary tensor materializations
