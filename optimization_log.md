@@ -130,6 +130,19 @@ Optimize the C++ implementation to match or exceed the Python/PyTorch implementa
 - Throughput: 2.9 → 5.9 tokens/sec
 **New bottleneck**: Attention now 91.6% of runtime
 
+#### Experiment 2.5: Optimize Attention Projections
+**Date**: 2025-11-19
+**Hypothesis**: Attention projections (Q,K,V,O) can use same optimization as MLP
+**Changes**:
+- Applied reshape + dot optimization to Q, K, V projections
+- Applied same optimization to output projection
+- Kept original attention computation loop (for stability)
+**Result**: **SUCCESS!**
+- Attention time: 20.9s → 8.2s (2.5x speedup)
+- Overall: 19.7s → 13.3s (1.5x speedup)
+- Total improvement from baseline: 3x (40.25s → 13.3s)
+- Throughput: 5.9 → 8.8 tokens/sec
+
 ---
 
 ## Next Steps

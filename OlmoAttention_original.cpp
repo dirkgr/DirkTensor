@@ -43,26 +43,16 @@ OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index
 xt::xtensor<float, 3> OlmoAttention::forward(const xt::xtensor<float, 3>& input) {
     const unsigned int batch_size = input.shape(0);
     const unsigned int seq_len = input.shape(1);
-    const unsigned int d_model = input.shape(2);
 
-    // Optimize projections using reshape + dot (same as MLP optimization)
-    // Reshape input from [batch, seq, d_model] to [batch*seq, d_model]
-    auto input_2d = xt::reshape_view(input, {batch_size * seq_len, d_model});
-
-    // Project Q, K, V using efficient BLAS operations
-    // Weight matrices are [d_model, d_model], need transpose for multiplication
-    auto projected_qs_2d = xt::linalg::dot(input_2d, xt::transpose(m_qProj));
-    auto projected_qs = xt::reshape_view(projected_qs_2d, {batch_size, seq_len, d_model});
+    const auto projected_qs = xt::linalg::tensordot(input, m_qProj, {2}, {1});
     const auto normed_qs = m_qNorm.forward(projected_qs);
     const auto qs = xt::reshape_view(normed_qs, {batch_size, seq_len, n_heads, head_dim});
 
-    auto projected_ks_2d = xt::linalg::dot(input_2d, xt::transpose(m_kProj));
-    auto projected_ks = xt::reshape_view(projected_ks_2d, {batch_size, seq_len, d_model});
+    const auto projected_ks = xt::linalg::tensordot(input, m_kProj, {2}, {1});
     const auto normed_ks = m_kNorm.forward(projected_ks);
     const auto ks = xt::reshape_view(normed_ks, {batch_size, seq_len, n_heads, head_dim});
 
-    auto projected_vs_2d = xt::linalg::dot(input_2d, xt::transpose(m_vProj));
-    auto projected_vs = xt::reshape_view(projected_vs_2d, {batch_size, seq_len, d_model});
+    const auto projected_vs = xt::linalg::tensordot(input, m_vProj, {2}, {1});
     const auto vs = xt::eval(xt::reshape_view(projected_vs, {batch_size, seq_len, n_heads, head_dim}));
 
     // qs, ks, vs are all (batch_size, seq_len, n_heads, head_dim)
@@ -95,12 +85,7 @@ xt::xtensor<float, 3> OlmoAttention::forward(const xt::xtensor<float, 3>& input)
         }
     }
 
-    // Output projection using efficient BLAS
-    auto output_2d = xt::reshape_view(attention_output, {batch_size * seq_len, d_model});
-    auto result_2d = xt::linalg::dot(output_2d, xt::transpose(m_oProj));
-    auto result = xt::reshape_view(result_2d, {batch_size, seq_len, d_model});
-
-    return xt::eval(result);
+    return xt::linalg::tensordot(attention_output, m_oProj, {2}, {1});
 }
 
 
