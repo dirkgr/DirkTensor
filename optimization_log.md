@@ -143,6 +143,18 @@ Optimize the C++ implementation to match or exceed the Python/PyTorch implementa
 - Total improvement from baseline: 3x (40.25s → 13.3s)
 - Throughput: 5.9 → 8.8 tokens/sec
 
+#### Experiment 2.6: Re-enable TBB Parallelization
+**Date**: 2025-11-20
+**Hypothesis**: TBB parallelization can improve attention performance
+**Changes**:
+- Re-applied TBB parallel_for with blocked_range2d
+- Parallelized across batch and sequence dimensions
+**Result**: **SUCCESS!**
+- Overall: 13.3s → 10.2s (1.3x speedup)
+- Total improvement from baseline: 3.9x (40.25s → 10.2s)
+- Throughput: 8.8 → 11.4 tokens/sec
+- Gap to Python: 5.4x slower (improved from 7x)
+
 ---
 
 ## Next Steps
@@ -160,17 +172,17 @@ Optimize the C++ implementation to match or exceed the Python/PyTorch implementa
 
 ## Performance Summary
 
-### Final Results (2025-11-19)
+### Final Results (2025-11-20)
 
 **Python Baseline:**
 - Forward pass: 1.89 seconds
 - Throughput: 61.9 tokens/sec
 
 **C++ Optimized:**
-- Forward pass: 13.3 seconds (from 40.25s baseline)
-- Throughput: 8.8 tokens/sec (from 2.9 baseline)
-- **Total speedup: 3x**
-- **Gap to Python: 7x slower** (improved from 19.4x slower)
+- Forward pass: 10.2 seconds (from 40.25s baseline)
+- Throughput: 11.4 tokens/sec (from 2.9 baseline)
+- **Total speedup: 3.9x**
+- **Gap to Python: 5.4x slower** (improved from 19.4x slower)
 
 ### Optimization Impact
 
@@ -178,7 +190,8 @@ Optimize the C++ implementation to match or exceed the Python/PyTorch implementa
 |--------------|---------------|---------|
 | MLP with BLAS | 40.25s → 19.7s | 2.0x |
 | Attention projections | 19.7s → 13.3s | 1.5x |
-| **Total** | **40.25s → 13.3s** | **3.0x** |
+| TBB parallelization | 13.3s → 10.2s | 1.3x |
+| **Total** | **40.25s → 10.2s** | **3.9x** |
 
 ### Current Bottlenecks
 - Attention computation loop: 84.7% of runtime (8.2s)
