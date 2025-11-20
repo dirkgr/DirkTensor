@@ -76,7 +76,21 @@ Optimize the C++ implementation to match or exceed the Python/PyTorch implementa
 **Changes**: Replaced element-wise loop with xtensor expression templates
 **Before**: for(i) { x[i] = x[i]/(1+exp(-x[i])) * proj[i] }
 **After**: silu = gate / (1 + xt::exp(-gate)) * projected
-**Status**: Testing...
+**Result**: ~5% improvement (38.3s vs 40.25s baseline)
+**Status**: COMPLETED - Small improvement
+
+#### Experiment 2.3: Profiling Analysis
+**Date**: 2025-11-19
+**Method**: Added detailed timing to each component
+**Results**: SURPRISING FINDINGS!
+- **MLP: 73.1% of time** (45.4s total, ~2.8s per layer)
+- **Attention: 26.6% of time** (16.5s total, ~1.0s per layer)
+- **Norms: 0.3% of time** (negligible)
+
+**Key Insight**: MLP is the main bottleneck, NOT attention!
+- Despite vectorizing SiLU, MLP still takes 2.8s per layer
+- Likely culprit: tensordot operations (3 per MLP layer)
+- Each tensordot is probably not using optimized BLAS
 
 ---
 
@@ -103,14 +117,29 @@ Optimize the C++ implementation to match or exceed the Python/PyTorch implementa
 
 ---
 
+#### Experiment 2.4: Optimize MLP with Direct BLAS Operations
+**Date**: 2025-11-19
+**Hypothesis**: tensordot is inefficient for batched matrix multiplications
+**Changes**:
+- Replaced tensordot with reshape + dot operations
+- Reshape 3D input to 2D for efficient GEMM
+- Use xt::linalg::dot with transposed weights
+**Result**: **MASSIVE SUCCESS!**
+- MLP time: 45.4s → 1.65s (27.5x speedup!)
+- Overall: 40.25s → 19.7s (2x speedup)
+- Throughput: 2.9 → 5.9 tokens/sec
+**New bottleneck**: Attention now 91.6% of runtime
+
+---
+
 ## Next Steps
 
 1. ✅ Create this optimization log
-2. ⏳ Add timing instrumentation
-3. ⏳ Measure baseline performance
-4. ⏳ Fix variable shadowing bug
-5. ⏳ Optimize attention mechanism
-6. ⏳ Vectorize RoPE
-7. ⏳ Vectorize MLP activation
+2. ✅ Add timing instrumentation
+3. ✅ Measure baseline performance
+4. ✅ Fix variable shadowing bug
+5. ✅ Optimize MLP (HUGE WIN!)
+6. ⏳ Optimize attention mechanism (now main bottleneck)
+7. ⏳ Vectorize RoPE
 8. ⏳ Reduce materializations
 9. ⏳ Re-enable parallelization

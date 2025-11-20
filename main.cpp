@@ -85,7 +85,7 @@ int main(int argc, char* argv[]) {
     std::cerr << "Warm-up completed in " << warmup_time.count() << " seconds" << std::endl;
 
     // Multiple timed forward passes
-    const int num_runs = 5;
+    const int num_runs = 1;  // Temporarily reduced for profiling
     std::cerr << "\nRunning " << num_runs << " timed forward passes..." << std::endl;
     std::vector<double> forward_times;
     xt::xtensor<float, 3> logits;
