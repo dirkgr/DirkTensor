@@ -17,19 +17,28 @@ Optimize the C++ implementation to match or exceed the Python/PyTorch implementa
 
 ### Initial Measurements (Before Optimization)
 **Date**: 2025-11-19
-**Commit**: Starting from 196de11 "Chasing speed"
+**Commit**: 8c6bd8f "Add comprehensive timing instrumentation"
 
 #### Python Implementation (inference.py)
-- **Command**: `python inference.py data/archilles.tokens.bin data/dodonaea.tokens.bin`
-- **Time**: [TO BE MEASURED]
-- **Tokens/sec**: [TO BE MEASURED]
+- **Command**: `python inference.py data/archilles.tokens.bin`
+- **Time**: 2.08 seconds average (5 runs)
+- **Tokens/sec**: 56.3
 - **Implementation**: PyTorch with HuggingFace Transformers
+- **Details**:
+  - Model loading: 1.247s
+  - Forward pass avg: 2.0765s (min: 1.7684s, max: 2.3868s)
 
 #### C++ Implementation (DirkTensor)
-- **Command**: `cmake-build-release/DirkTensor data/archilles.tokens.bin data/dodonaea.tokens.bin`
-- **Time**: [TO BE MEASURED]
-- **Tokens/sec**: [TO BE MEASURED]
-- **Performance vs Python**: [TO BE MEASURED]
+- **Command**: `cmake-build-release/DirkTensor data/archilles.tokens.bin`
+- **Time**: 40.25 seconds average per forward pass
+- **Tokens/sec**: 2.9
+- **Performance vs Python**: **19.4x SLOWER**
+- **Details**:
+  - Model loading: 7.496s (6x slower than Python)
+  - Warm-up pass: 40.252s
+  - Run 1: 40.261s
+  - Run 2: 40.242s
+  - (Stopped early - clear performance issue identified)
 
 ---
 
