@@ -38,7 +38,12 @@
       "Bash(/Users/dirkgr/Documents/DirkTensor/cmake-build-debug/DirkTensor:*)",
       "Bash(test:*)",
       "Bash(lldb:*)",
-      "Read(//opt/miniconda3/envs/DirkTensor/lib/python3.12/site-packages/xtensor_pp/**)"
+      "Read(//opt/miniconda3/envs/DirkTensor/lib/python3.12/site-packages/xtensor_pp/**)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd comprehensive timing instrumentation to both implementations\n\nBefore: No performance measurements available\nAfter: Detailed timing for model loading, I/O, and forward passes\nMethod: Added std::chrono for C++ and time.perf_counter for Python\n\nChanges:\n- Python: Added timing for model load, I/O, batch prep, and 5 forward passes\n- Python: Added warm-up run for stable timing\n- Python: Calculate and display throughput in tokens/second\n- C++: Added similar timing infrastructure with std::chrono\n- C++: Added comment noting variable shadowing issue (to be fixed)\n- Created optimization_log.md to track all experiments\n\nNext steps:\n- Run baseline measurements\n- Fix variable shadowing issue\n- Begin optimization attempts\nEOF\n)\")",
+      "Bash(python inference.py:*)",
+      "Bash(cmake-build-release/DirkTensor data/archilles.tokens.bin data/dodonaea.tokens.bin)",
+      "Bash(cmake-build-release/DirkTensor:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

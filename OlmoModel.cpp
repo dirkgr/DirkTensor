@@ -1,6 +1,8 @@
 #include "OlmoModel.h"
 
 #include <cassert>
+#include <iostream>
+#include <iomanip>
 #include <xtensor/io/xnpy.hpp>
 #include <xtensor/views/xview.hpp>
 #include <xtensor/views/xindex_view.hpp>
@@ -36,6 +38,40 @@ xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) 
     // Blocks
     for(size_t i = 0; i < n_layers; i++)
         x = m_blocks[i]->forward(x);
+
+    // Print profiling data
+    std::cerr << "\n" << std::string(60, '=') << std::endl;
+    std::cerr << "PROFILING RESULTS (milliseconds per component)" << std::endl;
+    std::cerr << std::string(60, '=') << std::endl;
+
+    double total_attention = 0.0, total_norm1 = 0.0, total_mlp = 0.0, total_norm2 = 0.0;
+
+    for(size_t i = 0; i < n_layers; i++) {
+        std::cerr << "Layer " << std::setw(2) << i << ": "
+                  << "Attn: " << std::fixed << std::setprecision(1) << std::setw(7)
+                  << m_blocks[i]->attention_time_ms << " ms, "
+                  << "Norm1: " << std::setw(6) << m_blocks[i]->norm1_time_ms << " ms, "
+                  << "MLP: " << std::setw(7) << m_blocks[i]->mlp_time_ms << " ms, "
+                  << "Norm2: " << std::setw(6) << m_blocks[i]->norm2_time_ms << " ms"
+                  << std::endl;
+
+        total_attention += m_blocks[i]->attention_time_ms;
+        total_norm1 += m_blocks[i]->norm1_time_ms;
+        total_mlp += m_blocks[i]->mlp_time_ms;
+        total_norm2 += m_blocks[i]->norm2_time_ms;
+    }
+
+    std::cerr << std::string(60, '-') << std::endl;
+    std::cerr << "TOTALS: "
+              << "Attn: " << std::setw(7) << total_attention << " ms ("
+              << std::setw(5) << std::setprecision(1)
+              << (total_attention / (total_attention + total_norm1 + total_mlp + total_norm2) * 100) << "%), "
+              << "MLP: " << std::setw(7) << total_mlp << " ms ("
+              << std::setw(5) << (total_mlp / (total_attention + total_norm1 + total_mlp + total_norm2) * 100) << "%), "
+              << "Norms: " << std::setw(7) << (total_norm1 + total_norm2) << " ms ("
+              << std::setw(5) << ((total_norm1 + total_norm2) / (total_attention + total_norm1 + total_mlp + total_norm2) * 100) << "%)"
+              << std::endl;
+    std::cerr << std::string(60, '=') << "\n" << std::endl;
 
     // Norm
     x = m_norm.forward(x);
