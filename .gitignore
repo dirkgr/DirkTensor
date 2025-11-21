@@ -23,3 +23,5 @@ Thumbs.db
 
 # Profiling artifacts
 profiles/
+*.pyc
+*.trace

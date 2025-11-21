@@ -4,42 +4,32 @@
 #include <format>
 #include <xtensor/io/xnpy.hpp>
 #include <xtensor-blas/xlinalg.hpp>
+#include <xtensor/core/xnoalias.hpp>
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range2d.h>
 
-// Static member definitions
-std::vector<float> OlmoAttention::s_rope_sin;
-std::vector<float> OlmoAttention::s_rope_cos;
+#include "xtutil.h"
+#include "model_config.h"
 
-void OlmoAttention::init_rope_tables() {
-    // Only initialize once (check if already done)
-    if (!s_rope_sin.empty()) {
-        return;
-    }
+static constexpr float rope_theta = 500000;
 
-    // Precompute RoPE sin/cos tables manually for better performance
-    s_rope_sin.resize(seq_len * head_dim);
-    s_rope_cos.resize(seq_len * head_dim);
+static constexpr auto rope_buffers() {
+    const auto inv_freq =
+        1.0 / (xt::pow(rope_theta, xt::arange<double>(0, head_dim, 2) / head_dim));
+    const auto seq = xt::arange<double>(0, max_seq_len);
+    const auto freqs =
+        xt::eval(xt::view(seq, xt::all(), xt::newaxis()) * xt::view(inv_freq, xt::newaxis(), xt::all()));
+    const auto positions = xt::concatenate(std::tuple(freqs, freqs), 1);
+    const auto pos_sin = xt::sin(positions);
+    const auto pos_cos = xt::cos(positions);
 
-    // Compute inverse frequencies: inv_freq[i] = 1.0 / (theta ^ (2i/head_dim))
-    std::vector<double> inv_freq(head_dim / 2);
-    for (size_t i = 0; i < head_dim / 2; ++i) {
-        inv_freq[i] = 1.0 / std::pow(theta, (2.0 * i) / head_dim);
-    }
+    const xt::xtensor<float, 2> pos_sin_f = xt::cast<float>(pos_sin);
+    const xt::xtensor<float, 2> pos_cos_f = xt::cast<float>(pos_cos);
 
-    // Compute sin/cos for each position and dimension
-    for (size_t pos = 0; pos < seq_len; ++pos) {
-        for (size_t i = 0; i < head_dim / 2; ++i) {
-            double angle = pos * inv_freq[i];
-            float sin_val = std::sin(angle);
-            float cos_val = std::cos(angle);
-
-            // Store twice (concatenated pattern from original implementation)
-            s_rope_sin[pos * head_dim + i] = sin_val;
-            s_rope_sin[pos * head_dim + head_dim/2 + i] = sin_val;
-            s_rope_cos[pos * head_dim + i] = cos_val;
-            s_rope_cos[pos * head_dim + head_dim/2 + i] = cos_val;
-        }
-    }
+    return std::pair(pos_sin_f, pos_cos_f);
+    // rope buffers are (seq_len, head_dim)
 }
+
 
 OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index) :
     m_qNorm(std::format("{}/model.layers.{}.self_attn.q_norm.weight.npy", folder, index)),
@@ -49,77 +39,150 @@ OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index
     m_kProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.k_proj.weight.npy", folder, index));
     m_vProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.v_proj.weight.npy", folder, index));
     m_oProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.o_proj.weight.npy", folder, index));
-
-    // kv cache
-    m_kCache = xt::empty<float>({seq_len, n_heads, head_dim});
-    m_vCache = xt::empty<float>({seq_len, n_heads, head_dim});
-
-    // Initialize RoPE tables once (shared across all instances)
-    init_rope_tables();
 }
 
-xt::xtensor<float, 1> OlmoAttention::forward(const xt::xtensor<float, 1>& input) {
-    const auto q = xt::reshape_view(m_qNorm.forward(xt::linalg::dot(m_qProj, input)), {n_heads, head_dim});
-    const auto k = xt::reshape_view(m_kNorm.forward(xt::linalg::dot(m_kProj, input)), {n_heads, head_dim});
-    const auto v = xt::reshape_view(xt::linalg::dot(m_vProj, input), {n_heads, head_dim});
-    // q, k, v are all (n_heads, head_dim)
+
+xt::xtensor<float, 3> OlmoAttention::forward(const xt::xtensor<float, 3>& input) {
+    const unsigned int batch_size = input.shape(0);
+    const unsigned int seq_len = input.shape(1);
+    const unsigned int d_model = input.shape(2);
+
+    // Optimize projections using reshape + dot (same as MLP optimization)
+    // Reshape input from [batch, seq, d_model] to [batch*seq, d_model]
+    auto input_2d = xt::reshape_view(input, {batch_size * seq_len, d_model});
+
+    // Project Q, K, V using efficient BLAS operations
+    // Weight matrices are [d_model, d_model], need transpose for multiplication
+    auto projected_qs_2d = xt::linalg::dot(input_2d, xt::transpose(m_qProj));
+    auto projected_qs = xt::reshape_view(projected_qs_2d, {batch_size, seq_len, d_model});
+    const auto normed_qs = m_qNorm.forward(projected_qs);
+    const auto qs = xt::reshape_view(normed_qs, {batch_size, seq_len, n_heads, head_dim});
+
+    auto projected_ks_2d = xt::linalg::dot(input_2d, xt::transpose(m_kProj));
+    auto projected_ks = xt::reshape_view(projected_ks_2d, {batch_size, seq_len, d_model});
+    const auto normed_ks = m_kNorm.forward(projected_ks);
+    const auto ks = xt::reshape_view(normed_ks, {batch_size, seq_len, n_heads, head_dim});
+
+    auto projected_vs_2d = xt::linalg::dot(input_2d, xt::transpose(m_vProj));
+    auto projected_vs = xt::reshape_view(projected_vs_2d, {batch_size, seq_len, d_model});
+    const auto vs = xt::eval(xt::reshape_view(projected_vs, {batch_size, seq_len, n_heads, head_dim}));
+
+    // qs, ks, vs are all (batch_size, seq_len, n_heads, head_dim)
 
     // apply RoPE
-    const auto q_with_rope = apply_rope(q, m_kvCacheEnd);
-    const auto k_with_rope = apply_rope(k, m_kvCacheEnd);
+    const auto qs_with_rope = xt::eval(apply_rope(qs));
+    const auto ks_with_rope = xt::eval(apply_rope(ks));
 
-    // put into cache
-    xt::view(m_kCache, m_kvCacheEnd) = k_with_rope;
-    xt::view(m_vCache, m_kvCacheEnd) = v;
-    m_kvCacheEnd += 1;
+    // attend - parallelized with TBB
+    // Pre-allocate output tensor with proper dimensions
+    xt::xtensor<float, 3> attention_output = xt::zeros<float>({batch_size, seq_len, d_model});
 
-    const auto ks = xt::view(m_kCache, xt::range(0, m_kvCacheEnd));
-    const auto vs = xt::view(m_vCache, xt::range(0, m_kvCacheEnd));
-    // ks and vs are (seq, n_heads, head_dim)
+    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
 
-    // attend
-    const auto logits = xt::sum(xt::view(q_with_rope, xt::newaxis(), xt::all()) * ks, {2}) / std::sqrt(head_dim);
-    // logits are (seq, n_heads)
+    tbb::parallel_for(
+        tbb::blocked_range2d<size_t>(0, batch_size, 0, seq_len),
+        [&](const tbb::blocked_range2d<size_t>& r) {
+            // Pre-allocate thread-local buffers to avoid repeated allocations
+            xt::xtensor<float, 1> logits_buffer = xt::zeros<float>({static_cast<size_t>(n_heads)});
+            xt::xtensor<float, 1> output_buffer = xt::zeros<float>({static_cast<size_t>(n_heads * head_dim)});
 
-    // softmax
-    const auto exp_logits = xt::eval(xt::exp(logits));
-    const auto exp_logits_sum = xt::sum(exp_logits, {0});
-    const auto softmax = exp_logits / exp_logits_sum;
-    // softmax is (seq, n_heads)
+            for (size_t b = r.rows().begin(); b != r.rows().end(); ++b) {
+                for (size_t position = r.cols().begin(); position != r.cols().end(); ++position) {
+                    // Clear output buffer
+                    std::fill(output_buffer.begin(), output_buffer.end(), 0.0f);
 
-    // apply weights to V
-    const auto weighted_sums = xt::sum(vs * xt::view(softmax, xt::all(), xt::all(), xt::newaxis()), {0});
-    // weighted_sums is (n_heads, head_dim)
-    const auto attention_output = xt::eval(xt::reshape_view(weighted_sums, {n_heads * head_dim}));
-    // attention_output is (d_model,)
+                    // For each head, compute attention weights and accumulate
+                    for (size_t h = 0; h < n_heads; ++h) {
+                        // Compute logits for this head: q @ k^T / sqrt(head_dim)
+                        float max_logit = -std::numeric_limits<float>::infinity();
 
-    return xt::linalg::dot(m_oProj, attention_output);
+                        // First pass: compute logits and find max for numerical stability
+                        for (size_t k_pos = 0; k_pos <= position; ++k_pos) {
+                            float dot = 0.0f;
+                            for (size_t d = 0; d < head_dim; ++d) {
+                                dot += qs_with_rope(b, position, h, d) * ks_with_rope(b, k_pos, h, d);
+                            }
+                            logits_buffer(h) = dot * scale;  // Reusing buffer temporarily
+                            max_logit = std::max(max_logit, logits_buffer(h));
+                        }
+
+                        // Second pass: compute softmax and weighted sum
+                        float sum_exp = 0.0f;
+                        for (size_t k_pos = 0; k_pos <= position; ++k_pos) {
+                            float dot = 0.0f;
+                            for (size_t d = 0; d < head_dim; ++d) {
+                                dot += qs_with_rope(b, position, h, d) * ks_with_rope(b, k_pos, h, d);
+                            }
+                            float logit = dot * scale;
+                            float weight = std::exp(logit - max_logit);
+                            sum_exp += weight;
+
+                            // Accumulate weighted values
+                            for (size_t d = 0; d < head_dim; ++d) {
+                                output_buffer(h * head_dim + d) += weight * vs(b, k_pos, h, d);
+                            }
+                        }
+
+                        // Normalize by sum of exp
+                        for (size_t d = 0; d < head_dim; ++d) {
+                            output_buffer(h * head_dim + d) /= sum_exp;
+                        }
+                    }
+
+                    // Copy to output
+                    for (size_t i = 0; i < n_heads * head_dim; ++i) {
+                        attention_output(b, position, i) = output_buffer(i);
+                    }
+                }
+            }
+        }
+    );
+
+    // Output projection using efficient BLAS
+    auto output_2d = xt::reshape_view(attention_output, {batch_size * seq_len, d_model});
+    auto result_2d = xt::linalg::dot(output_2d, xt::transpose(m_oProj));
+    auto result = xt::reshape_view(result_2d, {batch_size, seq_len, d_model});
+
+    return xt::eval(result);
 }
 
-xt::xtensor<float, 2> OlmoAttention::apply_rope(const xt::xtensor<float, 2>& input, size_t position) {
-    // Manual implementation for better performance - avoids xtensor overhead and concatenate
-    // Input dimensions: (n_heads, head_dim)
 
-    xt::xtensor<float, 2> output = xt::empty<float>({n_heads, head_dim});
+xt::xtensor<float, 4> OlmoAttention::apply_rope(const xt::xtensor<float, 4>& input) {
+    // Input dimensions: (batch_size, seq_len, n_heads, head_dim)
+    const auto batch_size = input.shape(0);
+    const auto seq_len = input.shape(1);
 
-    const float* sin_row = &s_rope_sin[position * head_dim];
-    const float* cos_row = &s_rope_cos[position * head_dim];
+    static const auto [pos_sin, pos_cos] = rope_buffers();
+    // rope buffers are (seq_len, head_dim)
 
-    // For each head
-    for (size_t head = 0; head < n_heads; ++head) {
-        const float* input_ptr = &input(head, 0);
-        float* output_ptr = &output(head, 0);
+    // Pre-allocate output with explicit type
+    xt::xtensor<float, 4> output = xt::zeros<float>({batch_size, seq_len, static_cast<size_t>(n_heads), static_cast<size_t>(head_dim)});
 
-        // Apply RoPE: output = input * cos + rotated(input) * sin
-        // Rotated means: [-input[64:128], input[0:64]]
-        for (size_t i = 0; i < head_dim / 2; ++i) {
-            // First half: output[i] = input[i] * cos[i] + (-input[i + half]) * sin[i]
-            output_ptr[i] = input_ptr[i] * cos_row[i] - input_ptr[i + head_dim/2] * sin_row[i];
+    // Scalar RoPE implementation - avoid xtensor expression template overhead
+    for (size_t b = 0; b < batch_size; ++b) {
+        for (size_t position = 0; position < seq_len; ++position) {
+            for (size_t h = 0; h < n_heads; ++h) {
+                // RoPE formula: output = input * cos + rotated_input * sin
+                // where rotated_input = [-second_half, first_half]
+                const size_t half = head_dim / 2;
 
-            // Second half: output[i+half] = input[i+half] * cos[i+half] + input[i] * sin[i+half]
-            output_ptr[i + head_dim/2] = input_ptr[i + head_dim/2] * cos_row[i + head_dim/2] + input_ptr[i] * sin_row[i + head_dim/2];
+                // First half of output: input[first_half] * cos - input[second_half] * sin
+                for (size_t d = 0; d < half; ++d) {
+                    const float cos_val = pos_cos(position, d);
+                    const float sin_val = pos_sin(position, d);
+                    output(b, position, h, d) =
+                        input(b, position, h, d) * cos_val - input(b, position, h, d + half) * sin_val;
+                }
+
+                // Second half of output: input[second_half] * cos + input[first_half] * sin
+                for (size_t d = 0; d < half; ++d) {
+                    const float cos_val = pos_cos(position, d + half);
+                    const float sin_val = pos_sin(position, d + half);
+                    output(b, position, h, d + half) =
+                        input(b, position, h, d + half) * cos_val + input(b, position, h, d) * sin_val;
+                }
+            }
         }
     }
-
     return output;
 }

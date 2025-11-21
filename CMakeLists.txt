@@ -11,6 +11,21 @@ include(FetchContent)
 # Enable testing
 enable_testing()
 
+find_package(BLAS REQUIRED)
+find_package(LAPACK REQUIRED)
+
+# Detect which BLAS implementation was found and set appropriate compile definitions
+if(BLAS_LIBRARIES MATCHES "Accelerate" OR BLAS_Accelerate_LIBRARY)
+    message(STATUS "Using Apple Accelerate framework for BLAS")
+    add_compile_definitions(WITH_VECLIB)
+elseif(BLAS_LIBRARIES MATCHES "openblas" OR BLAS_openblas_LIBRARY)
+    message(STATUS "Using OpenBLAS")
+    add_compile_definitions(WITH_OPENBLAS)
+elseif(BLAS_LIBRARIES MATCHES "mkl" OR BLAS_mkl_LIBRARY)
+    message(STATUS "Using Intel MKL")
+    add_compile_definitions(WITH_MKLBLAS)
+endif()
+
 # Fetch xtl (required dependency for xtensor)
 FetchContent_Declare(
     xtl
@@ -64,7 +79,7 @@ add_executable(DirkTensor
 )
 
 # Link xtensor (header-only library)
-target_link_libraries(DirkTensor xtensor xtl xsimd xtensor-blas TBB::tbb)
+target_link_libraries(DirkTensor xtensor xtl xsimd xtensor-blas TBB::tbb ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 
 # Enable xsimd for xtensor
 target_compile_definitions(DirkTensor PRIVATE XTENSOR_USE_XSIMD)
@@ -89,7 +104,7 @@ add_executable(test_olmo_model
     Detokenizer.h Detokenizer.cpp
 )
 
-target_link_libraries(test_olmo_model xtensor xtl xsimd xtensor-blas TBB::tbb GTest::gtest GTest::gtest_main)
+target_link_libraries(test_olmo_model xtensor xtl xsimd xtensor-blas TBB::tbb ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} GTest::gtest GTest::gtest_main)
 target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_XSIMD)
 target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_TBB)
 target_compile_options(test_olmo_model PRIVATE

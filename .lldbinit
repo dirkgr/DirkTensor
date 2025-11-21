@@ -1,0 +1,12 @@
+# LLDB initialization for DirkTensor project
+# Load xtensor pretty printers
+#
+# NOTE: This file only loads if your ~/.lldbinit allows loading cwd .lldbinit files.
+# If you have "settings set target.load-cwd-lldbinit false" in ~/.lldbinit,
+# you need to manually run this command in the LLDB console:
+#
+#   command script import /Users/dirkgr/Documents/DirkTensor/xtensor_lldb.py
+#
+# Or configure CLion to run it automatically (see DEBUGGER_SETUP.md)
+
+command script import xtensor_lldb.py

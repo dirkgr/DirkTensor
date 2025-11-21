@@ -38,7 +38,7 @@ static std::string unescape_string(const std::string& s) {
     return result;
 }
 
-Detokenizer::Detokenizer(const std::string& vocab_file) {
+Detokenizer::Detokenizer(const std::string& vocab_file) : m_padTokenId(0) {
     std::ifstream file(vocab_file);
     if (!file) {
         throw std::runtime_error("Cannot open vocabulary file: " + vocab_file);
@@ -72,6 +72,9 @@ Detokenizer::Detokenizer(const std::string& vocab_file) {
 
         m_vocab[token_id] = token;
         max_token_id = std::max(max_token_id, static_cast<size_t>(token_id));
+
+        if (token == "<|pad|>")
+            m_padTokenId = token_id;
     }
 
     // Shrink to actual size

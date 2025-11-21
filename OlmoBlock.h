@@ -10,7 +10,7 @@ class OlmoBlock {
 public:
     OlmoBlock(const std::string& folder, unsigned int index);
 
-    xt::xtensor<float, 1> forward(const xt::xtensor<float, 1>& input);
+    xt::xtensor<float, 3> forward(const xt::xtensor<float, 3>& input);
 
 private:
     OlmoAttention m_attention;

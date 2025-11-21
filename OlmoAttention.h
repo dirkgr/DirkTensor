@@ -1,18 +1,14 @@
 #pragma once
 
 #include <string>
-#include <vector>
 #include <xtensor/containers/xtensor.hpp>
-#include <xtensor/core/xmath.hpp>
 #include <xtensor/views/xview.hpp>
 #include "RMSNorm.h"
-#include "model_config.h"
 
 class OlmoAttention {
 public:
     OlmoAttention(const std::string& folder, unsigned int index);
-
-    xt::xtensor<float, 1> forward(const xt::xtensor<float, 1>& input);
+    xt::xtensor<float, 3> forward(const xt::xtensor<float, 3>& input);
 
 private:
     // parameters
@@ -23,18 +19,5 @@ private:
     xt::xtensor<float, 2> m_vProj;
     xt::xtensor<float, 2> m_oProj;
 
-    // RoPE - manually optimized implementation
-    static constexpr float theta = 500000;
-
-    xt::xtensor<float, 2> apply_rope(const xt::xtensor<float, 2>& input, size_t position);
-
-    // Precomputed RoPE sin/cos tables (seq_len x head_dim) - shared across all instances
-    static std::vector<float> s_rope_sin;
-    static std::vector<float> s_rope_cos;
-    static void init_rope_tables();
-
-    // kv cache
-    xt::xtensor<float, 3> m_kCache; // (seq_len, n_heads, head_dim)
-    xt::xtensor<float, 3> m_vCache; // (seq_len, n_heads, head_dim)
-    size_t m_kvCacheEnd = 0;
+    static xt::xtensor<float, 4> apply_rope(const xt::xtensor<float, 4>& input);
 };

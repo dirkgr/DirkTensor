@@ -33,7 +33,20 @@
       "Bash(/Applications/CLion.app/Contents/bin/cmake/mac/x64/bin/ctest --test-dir cmake-build-relwithdebinfo --output-on-failure -R test_olmo_model)",
       "Bash(./test_olmo_model)",
       "Bash(git log)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(pytest:*)",
+      "Bash(/Users/dirkgr/Documents/DirkTensor/cmake-build-debug/DirkTensor:*)",
+      "Bash(test:*)",
+      "Bash(lldb:*)",
+      "Read(//opt/miniconda3/envs/DirkTensor/lib/python3.12/site-packages/xtensor_pp/**)",
+      "Bash(python inference.py:*)",
+      "Bash(cmake-build-release/DirkTensor data/archilles.tokens.bin data/dodonaea.tokens.bin)",
+      "Bash(cmake-build-release/DirkTensor:*)",
+      "Bash(git commit:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:gist.github.com)",
+      "Bash(/Applications/CLion.app/Contents/bin/cmake/mac/x64/bin/ctest:*)"
     ],
     "deny": [],
     "ask": []

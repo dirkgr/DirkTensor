@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
 Tokenize text using the dolma2 tokenizer and write token IDs as binary integers.
-
-Usage:
-    python tokenize_text.py "Hello world, this is a test!" output_tokens.bin
 """
 
 import sys
 import struct
 import logging
+import argparse
 from transformers import AutoTokenizer
 
 # Configure logging to stderr (bash-friendly)
@@ -26,7 +24,8 @@ def tokenize_and_save(text: str, output_file: str = None):
     tokenizer = AutoTokenizer.from_pretrained("allenai/dolma2-tokenizer")
 
     # Tokenize the text
-    logging.info(f"Tokenizing text: '{text}'")
+    text_preview = text if len(text) <= 100 else text[:100] + "..."
+    logging.info(f"Tokenizing text: '{text_preview}'")
     token_ids = tokenizer.encode(text)
 
     logging.info(f"Generated {len(token_ids)} tokens")
@@ -54,17 +53,44 @@ def tokenize_and_save(text: str, output_file: str = None):
             output_stream.close()
 
 def main():
-    if len(sys.argv) < 2 or len(sys.argv) > 3:
-        logging.error("Usage: python tokenize_text.py <text> [output_file]")
-        logging.error("Examples:")
-        logging.error("  python tokenize_text.py \"Hello world!\" tokens.bin  # Write to file")
-        logging.error("  python tokenize_text.py \"Hello world!\"             # Write to stdout")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description='Tokenize text using the dolma2 tokenizer and write token IDs as binary integers.',
+        epilog='Examples:\n'
+               '  %(prog)s "Hello world!" -o tokens.bin  # Tokenize text, write to file\n'
+               '  %(prog)s "Hello world!"                # Tokenize text, write to stdout\n'
+               '  %(prog)s -f input.txt -o tokens.bin    # Tokenize from file\n'
+               '  %(prog)s --file input.txt              # Tokenize from file, write to stdout',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
 
-    text = sys.argv[1]
-    output_file = sys.argv[2] if len(sys.argv) == 3 else None
+    # Input options (mutually exclusive)
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument('text',
+                             nargs='?',
+                             help='Text to tokenize')
+    input_group.add_argument('--file', '-f',
+                             dest='input_file',
+                             metavar='FILE',
+                             help='Read text from file')
 
-    tokenize_and_save(text, output_file)
+    # Output option
+    parser.add_argument('--output', '-o',
+                        dest='output_file',
+                        metavar='FILE',
+                        default=None,
+                        help='Output file for token IDs (default: write to stdout)')
+
+    args = parser.parse_args()
+
+    # Read text from file if --file option is used
+    if args.input_file:
+        logging.info(f"Reading text from {args.input_file}")
+        with open(args.input_file, 'r', encoding='utf-8') as f:
+            text = f.read()
+    else:
+        text = args.text
+
+    tokenize_and_save(text, args.output_file)
 
 if __name__ == "__main__":
     main()

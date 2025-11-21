@@ -17,7 +17,7 @@ def test_tokenize_to_file():
     try:
         # Run tokenization
         result = subprocess.run(
-            ['python3', 'tokenize_text.py', 'Hello world', temp_file],
+            ['python3', 'tokenize_text.py', 'Hello world', '-o', temp_file],
             capture_output=True,
             text=False
         )
@@ -133,7 +133,7 @@ def test_missing_arguments():
     )
 
     assert result.returncode != 0, "Should fail with no arguments"
-    assert "Usage:" in result.stderr, "Should show usage message"
+    assert "usage:" in result.stderr, "Should show usage message"
 
 
 def test_file_overwrite():
@@ -145,7 +145,7 @@ def test_file_overwrite():
     try:
         # First tokenization
         result1 = subprocess.run(
-            ['python3', 'tokenize_text.py', 'First text', temp_file],
+            ['python3', 'tokenize_text.py', 'First text', '-o', temp_file],
             capture_output=True
         )
         assert result1.returncode == 0
@@ -155,7 +155,7 @@ def test_file_overwrite():
 
         # Second tokenization (should overwrite)
         result2 = subprocess.run(
-            ['python3', 'tokenize_text.py', 'Different text', temp_file],
+            ['python3', 'tokenize_text.py', 'Different text', '-o', temp_file],
             capture_output=True
         )
         assert result2.returncode == 0
@@ -169,6 +169,72 @@ def test_file_overwrite():
     finally:
         if os.path.exists(temp_file):
             os.remove(temp_file)
+
+
+def test_tokenize_from_file():
+    """Test tokenizing text from an input file."""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as input_f:
+        input_file = input_f.name
+        input_f.write("Hello from file!")
+
+    with tempfile.NamedTemporaryFile(suffix='.bin', delete=False) as output_f:
+        output_file = output_f.name
+
+    try:
+        # Run tokenization from file
+        result = subprocess.run(
+            ['python3', 'tokenize_text.py', '--file', input_file, '-o', output_file],
+            capture_output=True,
+            text=False
+        )
+
+        assert result.returncode == 0, f"Process failed with stderr: {result.stderr}"
+
+        # Read and verify tokens were written
+        with open(output_file, 'rb') as f:
+            tokens = []
+            while True:
+                data = f.read(4)
+                if not data:
+                    break
+                token = struct.unpack('<I', data)[0]
+                tokens.append(token)
+
+        # Should have tokenized into at least 1 token
+        assert len(tokens) > 0, "No tokens were written"
+
+    finally:
+        # Clean up
+        if os.path.exists(input_file):
+            os.remove(input_file)
+        if os.path.exists(output_file):
+            os.remove(output_file)
+
+
+def test_tokenize_from_file_to_stdout():
+    """Test tokenizing text from a file to stdout."""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as input_f:
+        input_file = input_f.name
+        input_f.write("Hello from file to stdout!")
+
+    try:
+        result = subprocess.run(
+            ['python3', 'tokenize_text.py', '-f', input_file],
+            capture_output=True,
+            text=False
+        )
+
+        assert result.returncode == 0, f"Process failed with stderr: {result.stderr}"
+
+        # Should have some output
+        assert len(result.stdout) > 0, "No data written to stdout"
+
+        # Output length should be multiple of 4 (uint32 size)
+        assert len(result.stdout) % 4 == 0, f"Output size {len(result.stdout)} is not a multiple of 4"
+
+    finally:
+        if os.path.exists(input_file):
+            os.remove(input_file)
 
 
 if __name__ == '__main__':

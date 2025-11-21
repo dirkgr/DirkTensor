@@ -10,13 +10,10 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
-def read_tokens(file_path=None):
-    """Read uint32 tokens from binary file or stdin."""
-    if file_path:
-        with open(file_path, 'rb') as f:
-            data = f.read()
-    else:
-        data = sys.stdin.buffer.read()
+def read_tokens(file_path):
+    """Read uint32 tokens from binary file."""
+    with open(file_path, 'rb') as f:
+        data = f.read()
 
     # Each token is 4 bytes (uint32)
     num_tokens = len(data) // 4
@@ -29,54 +26,43 @@ def read_tokens(file_path=None):
 
 
 def main():
-    if len(sys.argv) > 1:
-        file_path = sys.argv[1]
-    else:
-        file_path = None
+    if len(sys.argv) < 2:
+        print("Usage: inference.py <token_file1> [token_file2 ...]", file=sys.stderr)
+        sys.exit(1)
 
-    # Read tokens
-    tokens = read_tokens(file_path)
+    file_paths = sys.argv[1:]
 
     # Load model and tokenizer
     model_name = "allenai/OLMo-2-0425-1B"
-
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         dtype=torch.float32
     )
     model.eval()
 
-    tokens_left = 20
-    next_token_id = 0
-    past_key_values = None
+    # Read all token files
+    all_tokens = []
+    for file_path in file_paths:
+        tokens = read_tokens(file_path)
+        all_tokens.append(tokens)
 
-    # Process input tokens
+    # Find max sequence length and build batch with padding
+    max_seq_len = max(len(tokens) for tokens in all_tokens)
+    pad_token_id = tokenizer.pad_token_id
+    batch = torch.full((len(all_tokens), max_seq_len), pad_token_id, dtype=torch.long)
+
+    for i, tokens in enumerate(all_tokens):
+        batch[i, :len(tokens)] = torch.tensor(tokens, dtype=torch.long)
+
+    # Forward pass
     with torch.no_grad():
-        for i in range(20):
-            if i < len(tokens):
-                next_token_id = tokens[i]
+        outputs = model(batch)
+        logits = outputs.logits
 
-            decoded = tokenizer.decode([next_token_id])
-            print(f'{i}: token {next_token_id} ("{decoded}") ', end='')
-
-            # Forward pass with single token
-            input_ids = torch.tensor([[next_token_id]], dtype=torch.long)
-            outputs = model(input_ids, past_key_values=past_key_values, use_cache=True)
-            past_key_values = outputs.past_key_values
-            logits = outputs.logits[0, -1, :]
-
-            # Get top 5 predictions
-            top5_logits, top5_indices = torch.topk(logits, 5)
-            top5_tokens = top5_indices.cpu().numpy()
-
-            print("Top 5 next tokens: ", end='')
-            for top_token in top5_tokens:
-                print(f'{top_token} ', end='')
-            print()
-
-            next_token_id = top5_tokens[0]
+    # Print logits
+    print(logits.shape)
+    print(logits)
 
 if __name__ == "__main__":
     main()
