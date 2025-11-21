@@ -37,8 +37,17 @@ xt::xtensor<float, 3> OlmoMlp::forward(const xt::xtensor<float, 3>& input) {
     auto gate_2d = xt::linalg::dot(input_2d, xt::transpose(m_gateProjection));
 
     // Apply SiLU activation: gate * sigmoid(gate) * projected
-    const auto silu = gate_2d / (1.0f + xt::exp(-gate_2d));
-    const auto activated_2d = silu * projected_2d;
+    // Use scalar operations to avoid xtensor expression template overhead
+    xt::xtensor<float, 2> activated_2d = xt::zeros<float>({batch_size * seq_len, hidden_size});
+    const float* gate_ptr = gate_2d.data();
+    const float* proj_ptr = projected_2d.data();
+    float* act_ptr = activated_2d.data();
+    const size_t total_elements = batch_size * seq_len * hidden_size;
+    for (size_t i = 0; i < total_elements; ++i) {
+        float g = gate_ptr[i];
+        float silu = g / (1.0f + std::exp(-g));
+        act_ptr[i] = silu * proj_ptr[i];
+    }
 
     // Final projection back to d_model
     // m_downProjection is [d_model, hidden_size], so we need to transpose it
