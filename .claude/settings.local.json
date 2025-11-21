@@ -43,7 +43,10 @@
       "Bash(python inference.py:*)",
       "Bash(cmake-build-release/DirkTensor data/archilles.tokens.bin data/dodonaea.tokens.bin)",
       "Bash(cmake-build-release/DirkTensor:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:gist.github.com)"
     ],
     "deny": [],
     "ask": []

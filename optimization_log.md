@@ -198,8 +198,29 @@ Optimize the C++ implementation to match or exceed the Python/PyTorch implementa
 - MLP: 13.5% of runtime (1.3s)
 - Norms: 1.8% of runtime (0.2s)
 
+### Phase 3: Further Attention Optimizations
+
+#### Experiment 3.1: Tiled Attention Implementation
+**Date**: 2025-11-20
+**Hypothesis**: Cache-optimized tiled attention with online softmax might improve performance
+**Changes**: Implemented tiled attention with Q_TILE=16, KV_TILE=32 and online softmax
+**Result**: **FAILED** - Timed out after 120 seconds (>12x slower!)
+**Lesson**: Manual loops and complex tiling logic performed poorly on CPU
+
+#### Experiment 3.2: Vectorized RoPE
+**Date**: 2025-11-20
+**Hypothesis**: Triple-nested loop in RoPE is inefficient
+**Changes**: Process all heads at once instead of individual loops
+**Result**: **Minor success** - 10.2s → 10.0s (2% improvement)
+**Performance**: 11.7 tokens/sec (from 11.4)
+
+### Current Performance (2025-11-20)
+- Forward pass: 10.0 seconds
+- Throughput: 11.7 tokens/sec
+- Gap to Python: 5.3x slower (Python: 61.9 tokens/sec)
+
 ### Remaining Opportunities
-1. **Attention computation loop** - The nested position-by-position loops are still inefficient
-2. **RoPE implementation** - Triple-nested loops could be vectorized
-3. **TBB parallelization** - Was disabled in earlier commits but showed 10s improvement
-4. **Memory allocations** - Reduce temporary tensor materializations
+1. **Attention computation loop** - The nested position-by-position loops are still the main bottleneck (50% of runtime)
+2. **Memory allocations** - Reduce temporary tensor materializations
+3. **Batch attention computation** - Process multiple positions at once instead of sequential
+4. **Investigate PyTorch C++ implementation** - Learn from their CPU optimizations
