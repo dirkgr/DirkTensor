@@ -74,29 +74,65 @@ xt::xtensor<float, 3> OlmoAttention::forward(const xt::xtensor<float, 3>& input)
     const auto ks_with_rope = xt::eval(apply_rope(ks));
 
     // attend - parallelized with TBB
-    auto attention_output = xt::zeros_like(input);
+    // Pre-allocate output tensor with proper dimensions
+    xt::xtensor<float, 3> attention_output = xt::zeros<float>({batch_size, seq_len, d_model});
+
+    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
+
     tbb::parallel_for(
         tbb::blocked_range2d<size_t>(0, batch_size, 0, seq_len),
         [&](const tbb::blocked_range2d<size_t>& r) {
+            // Pre-allocate thread-local buffers to avoid repeated allocations
+            xt::xtensor<float, 1> logits_buffer = xt::zeros<float>({static_cast<size_t>(n_heads)});
+            xt::xtensor<float, 1> output_buffer = xt::zeros<float>({static_cast<size_t>(n_heads * head_dim)});
+
             for (size_t b = r.rows().begin(); b != r.rows().end(); ++b) {
                 for (size_t position = r.cols().begin(); position != r.cols().end(); ++position) {
-                    const auto q = xt::view(qs_with_rope, b, position, xt::newaxis(), xt::all());
-                    const auto k = xt::view(ks_with_rope, b, xt::range(0, position + 1)); // causal mask is in here
-                    const auto v = xt::view(vs, b, xt::range(0, position + 1));
-                    const auto logits = xt::sum(q * k, {2}) / std::sqrt(head_dim);
+                    // Clear output buffer
+                    std::fill(output_buffer.begin(), output_buffer.end(), 0.0f);
 
-                    auto softmax = xt::eval(xt::exp(logits));
-                    const auto exp_logits_sum = xt::eval(xt::sum(softmax, {0}));
-                    xt::noalias(softmax) /= exp_logits_sum;
-                    // softmax is (seq, n_heads)
+                    // For each head, compute attention weights and accumulate
+                    for (size_t h = 0; h < n_heads; ++h) {
+                        // Compute logits for this head: q @ k^T / sqrt(head_dim)
+                        float max_logit = -std::numeric_limits<float>::infinity();
 
-                    // apply weights to V
-                    const auto weighted_sums =
-                        xt::sum(v * xt::view(softmax, xt::all(), xt::all(), xt::newaxis()), {0});
-                    // weighted_sums is (n_heads, head_dim)
+                        // First pass: compute logits and find max for numerical stability
+                        for (size_t k_pos = 0; k_pos <= position; ++k_pos) {
+                            float dot = 0.0f;
+                            for (size_t d = 0; d < head_dim; ++d) {
+                                dot += qs_with_rope(b, position, h, d) * ks_with_rope(b, k_pos, h, d);
+                            }
+                            logits_buffer(h) = dot * scale;  // Reusing buffer temporarily
+                            max_logit = std::max(max_logit, logits_buffer(h));
+                        }
 
-                    xt::noalias(xt::view(attention_output, b, position)) +=
-                        xt::reshape_view(weighted_sums, {n_heads * head_dim});
+                        // Second pass: compute softmax and weighted sum
+                        float sum_exp = 0.0f;
+                        for (size_t k_pos = 0; k_pos <= position; ++k_pos) {
+                            float dot = 0.0f;
+                            for (size_t d = 0; d < head_dim; ++d) {
+                                dot += qs_with_rope(b, position, h, d) * ks_with_rope(b, k_pos, h, d);
+                            }
+                            float logit = dot * scale;
+                            float weight = std::exp(logit - max_logit);
+                            sum_exp += weight;
+
+                            // Accumulate weighted values
+                            for (size_t d = 0; d < head_dim; ++d) {
+                                output_buffer(h * head_dim + d) += weight * vs(b, k_pos, h, d);
+                            }
+                        }
+
+                        // Normalize by sum of exp
+                        for (size_t d = 0; d < head_dim; ++d) {
+                            output_buffer(h * head_dim + d) /= sum_exp;
+                        }
+                    }
+
+                    // Copy to output
+                    for (size_t i = 0; i < n_heads * head_dim; ++i) {
+                        attention_output(b, position, i) = output_buffer(i);
+                    }
                 }
             }
         }
