@@ -155,31 +155,33 @@ xt::xtensor<float, 4> OlmoAttention::apply_rope(const xt::xtensor<float, 4>& inp
     static const auto [pos_sin, pos_cos] = rope_buffers();
     // rope buffers are (seq_len, head_dim)
 
-    auto output = xt::zeros_like(input);
+    // Pre-allocate output with explicit type
+    xt::xtensor<float, 4> output = xt::zeros<float>({batch_size, seq_len, static_cast<size_t>(n_heads), static_cast<size_t>(head_dim)});
 
-    // Vectorized RoPE - process all heads at once
+    // Scalar RoPE implementation - avoid xtensor expression template overhead
     for (size_t b = 0; b < batch_size; ++b) {
         for (size_t position = 0; position < seq_len; ++position) {
-            auto input_pos = xt::view(input, b, position); // [n_heads, head_dim]
-            auto output_pos = xt::view(output, b, position); // [n_heads, head_dim]
+            for (size_t h = 0; h < n_heads; ++h) {
+                // RoPE formula: output = input * cos + rotated_input * sin
+                // where rotated_input = [-second_half, first_half]
+                const size_t half = head_dim / 2;
 
-            // Rotate first half with second half (for all heads simultaneously)
-            auto input_first_half = xt::view(input_pos, xt::all(), xt::range(0, head_dim / 2));
-            auto input_second_half = xt::view(input_pos, xt::all(), xt::range(head_dim / 2, head_dim));
+                // First half of output: input[first_half] * cos - input[second_half] * sin
+                for (size_t d = 0; d < half; ++d) {
+                    float cos_val = pos_cos(position, d);
+                    float sin_val = pos_sin(position, d);
+                    output(b, position, h, d) =
+                        input(b, position, h, d) * cos_val - input(b, position, h, d + half) * sin_val;
+                }
 
-            // Build rotated vector for sin component
-            auto output_first_half = xt::view(output_pos, xt::all(), xt::range(0, head_dim / 2));
-            auto output_second_half = xt::view(output_pos, xt::all(), xt::range(head_dim / 2, head_dim));
-
-            xt::noalias(output_first_half) = -input_second_half;
-            xt::noalias(output_second_half) = input_first_half;
-
-            // Apply sin and cos components (broadcast across all heads)
-            auto sin_coeff = xt::view(pos_sin, position); // [head_dim]
-            auto cos_coeff = xt::view(pos_cos, position); // [head_dim]
-
-            // RoPE formula: x * cos + rotated_x * sin
-            xt::noalias(output_pos) = output_pos * sin_coeff + input_pos * cos_coeff;
+                // Second half of output: input[second_half] * cos + input[first_half] * sin
+                for (size_t d = 0; d < half; ++d) {
+                    float cos_val = pos_cos(position, d + half);
+                    float sin_val = pos_sin(position, d + half);
+                    output(b, position, h, d + half) =
+                        input(b, position, h, d + half) * cos_val + input(b, position, h, d) * sin_val;
+                }
+            }
         }
     }
     return output;
