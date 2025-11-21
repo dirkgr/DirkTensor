@@ -104,7 +104,7 @@ add_executable(test_olmo_model
     Detokenizer.h Detokenizer.cpp
 )
 
-target_link_libraries(test_olmo_model xtensor xtl xsimd xtensor-blas TBB::tbb GTest::gtest GTest::gtest_main)
+target_link_libraries(test_olmo_model xtensor xtl xsimd xtensor-blas TBB::tbb ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} GTest::gtest GTest::gtest_main)
 target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_XSIMD)
 target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_TBB)
 target_compile_options(test_olmo_model PRIVATE
