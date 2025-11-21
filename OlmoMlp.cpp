@@ -39,13 +39,13 @@ xt::xtensor<float, 3> OlmoMlp::forward(const xt::xtensor<float, 3>& input) {
     // Apply SiLU activation: gate * sigmoid(gate) * projected
     // Use scalar operations to avoid xtensor expression template overhead
     xt::xtensor<float, 2> activated_2d = xt::zeros<float>({batch_size * seq_len, hidden_size});
-    const float* gate_ptr = gate_2d.data();
-    const float* proj_ptr = projected_2d.data();
-    float* act_ptr = activated_2d.data();
+    const float* const gate_ptr = gate_2d.data();
+    const float* const proj_ptr = projected_2d.data();
+    float* const act_ptr = activated_2d.data();
     const size_t total_elements = batch_size * seq_len * hidden_size;
     for (size_t i = 0; i < total_elements; ++i) {
-        float g = gate_ptr[i];
-        float silu = g / (1.0f + std::exp(-g));
+        const float g = gate_ptr[i];
+        const float silu = g / (1.0f + std::exp(-g));
         act_ptr[i] = silu * proj_ptr[i];
     }
 

@@ -168,16 +168,16 @@ xt::xtensor<float, 4> OlmoAttention::apply_rope(const xt::xtensor<float, 4>& inp
 
                 // First half of output: input[first_half] * cos - input[second_half] * sin
                 for (size_t d = 0; d < half; ++d) {
-                    float cos_val = pos_cos(position, d);
-                    float sin_val = pos_sin(position, d);
+                    const float cos_val = pos_cos(position, d);
+                    const float sin_val = pos_sin(position, d);
                     output(b, position, h, d) =
                         input(b, position, h, d) * cos_val - input(b, position, h, d + half) * sin_val;
                 }
 
                 // Second half of output: input[second_half] * cos + input[first_half] * sin
                 for (size_t d = 0; d < half; ++d) {
-                    float cos_val = pos_cos(position, d + half);
-                    float sin_val = pos_sin(position, d + half);
+                    const float cos_val = pos_cos(position, d + half);
+                    const float sin_val = pos_sin(position, d + half);
                     output(b, position, h, d + half) =
                         input(b, position, h, d + half) * cos_val + input(b, position, h, d) * sin_val;
                 }
