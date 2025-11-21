@@ -232,20 +232,50 @@ Optimize the C++ implementation to match or exceed the Python/PyTorch implementa
 - Attention loop: 303 ms → 23 ms (**13x speedup!**)
 - Overall: 9.57s → 9.2s (12.7 tokens/sec from 12.2)
 
+### Phase 4: LM Head Optimization (2025-11-20)
+
+#### Experiment 4.1: Profile with `sample` tool
+**Date**: 2025-11-20
+**Method**: Used macOS `sample` command-line profiler during forward pass
+**Key Finding**: Profiler revealed massive time spent in xtensor "assigner" and "stepper" functions
+inside `xt::linalg::tensordot` called from `OlmoModel::forward()` for the LM head projection.
+
+**Profile Hot Spots:**
+- `xt::xexpression_assigner_base::assign_data` - 3219 samples (87%)
+- `xt::stepper_tools::increment_stepper` - 478 samples (13%)
+
+TBB worker threads were all idle (waiting on semaphores), confirming tensordot was single-threaded!
+
+#### Experiment 4.2: Optimize LM Head with BLAS
+**Date**: 2025-11-20
+**Hypothesis**: LM head tensordot is causing the remaining bottleneck
+**Changes**: Replaced tensordot with reshape + dot pattern (same as MLP/Attention)
+**Result**: **BREAKTHROUGH SUCCESS!**
+- Forward pass: 9.6s → **1.4s** (6.9x speedup!)
+- Throughput: 12.1 → **84.4 tokens/sec** (7x improvement)
+- **Now 1.45x FASTER than Python!** (Python: 58.2 tokens/sec)
+
+---
+
 ### Final Performance Summary (2025-11-20)
 
-**Best C++ Performance Achieved:**
-- Forward pass: 9.2 seconds
-- Throughput: 12.7 tokens/sec
-- Total speedup from baseline: 4.4x (40.25s → 9.2s)
-- Gap to Python: 4.9x slower (Python: 61.9 tokens/sec)
+**GOAL ACHIEVED: C++ is now FASTER than Python!**
+
+| Implementation | Forward Pass | Throughput | vs Baseline |
+|----------------|--------------|------------|-------------|
+| Python (PyTorch) | 2.0s | 58.2 tok/s | - |
+| C++ (baseline) | 40.25s | 2.9 tok/s | 1.0x |
+| **C++ (optimized)** | **1.4s** | **84.4 tok/s** | **28.7x** |
+
+**C++ is now 1.45x faster than Python!**
 
 **Successful Optimizations:**
 1. MLP with direct BLAS: 27.5x speedup for MLP component
 2. Attention projections with BLAS: 2.5x speedup for attention
 3. TBB parallelization: 1.3x overall speedup
 4. Vectorized RoPE: 2% improvement
-5. **Scalar attention loop: 13x speedup for attention loop** (NEW!)
+5. Scalar attention loop: 13x speedup for attention loop
+6. **LM Head with BLAS: 6.9x overall speedup** (FINAL FIX!)
 
 **Failed Attempts:**
 1. Tiled attention with online softmax: >12x slower than baseline
@@ -253,13 +283,19 @@ Optimize the C++ implementation to match or exceed the Python/PyTorch implementa
 
 ### Key Learnings
 
-1. **xtensor-blas limitations**: Requires contiguous memory layouts, struggles with strided views
-2. **BLAS is crucial**: Direct BLAS operations via reshape+dot pattern provide massive speedups
-3. **Sequential bottleneck**: Position-by-position attention loop remains main bottleneck (50% of runtime)
-4. **PyTorch approach**: Relies on optimized BLAS libraries (bmm) rather than manual optimization
+1. **Profiling is essential**: The `sample` profiler immediately showed tensordot was the bottleneck
+2. **xtensor tensordot is very slow**: Falls back to expression templates, not BLAS
+3. **The reshape+dot pattern works**: Consistently provides 10-30x speedups over tensordot
+4. **BLAS is crucial**: Direct BLAS operations via reshape+dot pattern provide massive speedups
+5. **xtensor-blas limitations**: Requires contiguous memory layouts, struggles with strided views
 
-### Remaining Opportunities
-1. **Alternative tensor library**: Consider libraries with better BLAS integration for non-contiguous views
-2. **Custom SIMD implementation**: Hand-written vectorized attention kernel
-3. **Memory layout optimization**: Ensure all tensors are contiguous before operations
-4. **Compiler optimizations**: Profile-guided optimization, link-time optimization
+### Total Optimization Impact
+
+| Phase | Change | Time Before | Time After | Speedup |
+|-------|--------|-------------|------------|---------|
+| MLP BLAS | Replace tensordot | 40.25s | 19.7s | 2.0x |
+| Attention BLAS | Replace tensordot | 19.7s | 13.3s | 1.5x |
+| TBB Parallelization | Add parallel_for | 13.3s | 10.2s | 1.3x |
+| Scalar Attention | Remove xtensor overhead | 10.2s | 9.2s | 1.1x |
+| **LM Head BLAS** | Replace tensordot | 9.6s | **1.4s** | **6.9x** |
+| **TOTAL** | - | **40.25s** | **1.4s** | **28.7x** |

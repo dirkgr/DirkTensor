@@ -76,6 +76,19 @@ xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) 
     // Norm
     x = m_norm.forward(x);
 
-    // LM Head
-    return xt::linalg::tensordot(x, m_lmHead, {2}, {1});
+    // LM Head - optimized with reshape + dot instead of tensordot
+    const size_t batch_size = x.shape(0);
+    const size_t seq_len = x.shape(1);
+    const size_t hidden_dim = x.shape(2);
+    const size_t vocab_size = m_lmHead.shape(0);
+
+    // Reshape from [batch, seq, d_model] to [batch*seq, d_model]
+    auto x_2d = xt::reshape_view(x, {batch_size * seq_len, hidden_dim});
+
+    // Matrix multiply: [batch*seq, d_model] @ [d_model, vocab_size] -> [batch*seq, vocab_size]
+    // m_lmHead is [vocab_size, d_model], so we need to transpose it
+    auto logits_2d = xt::linalg::dot(x_2d, xt::transpose(m_lmHead));
+
+    // Reshape back to [batch, seq, vocab_size]
+    return xt::eval(xt::reshape_view(logits_2d, {batch_size, seq_len, vocab_size}));
 }
