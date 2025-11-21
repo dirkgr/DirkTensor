@@ -20,7 +20,7 @@ OlmoModel::OlmoModel(const std::string& folder) : m_norm(folder + "/model.norm.w
         m_blocks[i] = std::make_unique<OlmoBlock>(folder, i);
 }
 
-xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) {
+xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) const {
     // Embedding
     xt::xtensor<float, 3> x = xt::empty<float>({
         batch.shape(0),

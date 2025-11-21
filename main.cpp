@@ -26,7 +26,7 @@ xt::xtensor<uint32_t, 1> read_tokens(std::istream& input) {
 }
 
 int main(int argc, char* argv[]) {
-    OlmoModel model("models/OLMo-2-0425-1B");
+    const OlmoModel model("models/OLMo-2-0425-1B");
     const Detokenizer detokenizer("models/OLMo-2-0425-1B/vocab.txt");
 
     // Read files and determine actual max sequence length

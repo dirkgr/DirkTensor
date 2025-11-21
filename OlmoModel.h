@@ -12,7 +12,7 @@ class OlmoModel {
 public:
     explicit OlmoModel(const std::string& folder);
 
-    xt::xtensor<float, 3> forward(const xt::xtensor<uint32_t, 2>& batch);
+    xt::xtensor<float, 3> forward(const xt::xtensor<uint32_t, 2>& batch) const;
 
 private:
     xt::xtensor<float, 2> m_embeddings;

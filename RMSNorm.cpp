@@ -11,7 +11,7 @@ RMSNorm::RMSNorm(const std::string& filename) {
     m_weight = xt::load_npy<float>(filename);
 }
 
-xt::xtensor<float, 3> RMSNorm::forward(const xt::xtensor<float, 3>& input) {
+xt::xtensor<float, 3> RMSNorm::forward(const xt::xtensor<float, 3>& input) const {
     const auto squares = xt::pow(input, 2);
     const auto sum_squares = xt::sum(squares, {2});
     const auto rms = xt::eval(xt::sqrt(sum_squares / input.shape(2) + eps));
