@@ -19,21 +19,5 @@ private:
     xt::xtensor<float, 2> m_vProj;
     xt::xtensor<float, 2> m_oProj;
 
-    // RoPE - manually optimized implementation
     static xt::xtensor<float, 4> apply_rope(const xt::xtensor<float, 4>& input);
-    static xt::xtensor<float, 4> apply_rope_vectorized(const xt::xtensor<float, 4>& input);
-
-    // Optimized attention computation
-    static xt::xtensor<float, 3> compute_attention_batched(
-        const xt::xtensor<float, 4>& qs_with_rope,
-        const xt::xtensor<float, 4>& ks_with_rope,
-        const xt::xtensor<float, 4>& vs,
-        size_t batch_size, size_t seq_len);
-
-    // Tiled attention computation for cache efficiency
-    static xt::xtensor<float, 3> compute_tiled_attention(
-        const xt::xtensor<float, 4>& qs_with_rope,
-        const xt::xtensor<float, 4>& ks_with_rope,
-        const xt::xtensor<float, 4>& vs,
-        size_t batch_size, size_t seq_len);
 };
