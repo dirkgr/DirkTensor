@@ -221,19 +221,31 @@ Optimize the C++ implementation to match or exceed the Python/PyTorch implementa
 **Result**: **FAILED** - "No valid layout chosen" error from xtensor-blas
 **Lesson**: Non-contiguous tensor views incompatible with xtensor-blas operations
 
+#### Experiment 3.4: Scalar Attention Loop Optimization
+**Date**: 2025-11-20
+**Hypothesis**: xtensor expression templates have overhead; direct scalar ops may be faster
+**Changes**:
+- Replaced xtensor expression templates with direct scalar operations
+- Pre-allocated thread-local buffers to avoid repeated allocations
+- Implemented single-pass softmax with max tracking for numerical stability
+**Result**: **MASSIVE SUCCESS!**
+- Attention loop: 303 ms → 23 ms (**13x speedup!**)
+- Overall: 9.57s → 9.2s (12.7 tokens/sec from 12.2)
+
 ### Final Performance Summary (2025-11-20)
 
 **Best C++ Performance Achieved:**
-- Forward pass: 10.0 seconds
-- Throughput: 11.7 tokens/sec
-- Total speedup from baseline: 4x (40.25s → 10.0s)
-- Gap to Python: 5.3x slower (Python: 61.9 tokens/sec)
+- Forward pass: 9.2 seconds
+- Throughput: 12.7 tokens/sec
+- Total speedup from baseline: 4.4x (40.25s → 9.2s)
+- Gap to Python: 4.9x slower (Python: 61.9 tokens/sec)
 
 **Successful Optimizations:**
 1. MLP with direct BLAS: 27.5x speedup for MLP component
 2. Attention projections with BLAS: 2.5x speedup for attention
 3. TBB parallelization: 1.3x overall speedup
 4. Vectorized RoPE: 2% improvement
+5. **Scalar attention loop: 13x speedup for attention loop** (NEW!)
 
 **Failed Attempts:**
 1. Tiled attention with online softmax: >12x slower than baseline
