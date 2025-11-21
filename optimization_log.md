@@ -214,13 +214,40 @@ Optimize the C++ implementation to match or exceed the Python/PyTorch implementa
 **Result**: **Minor success** - 10.2s → 10.0s (2% improvement)
 **Performance**: 11.7 tokens/sec (from 11.4)
 
-### Current Performance (2025-11-20)
+#### Experiment 3.3: Batch Attention Computation
+**Date**: 2025-11-20
+**Hypothesis**: Process all attention positions at once instead of sequentially
+**Changes**: Implemented batch Q@K^T computation and row-wise softmax
+**Result**: **FAILED** - "No valid layout chosen" error from xtensor-blas
+**Lesson**: Non-contiguous tensor views incompatible with xtensor-blas operations
+
+### Final Performance Summary (2025-11-20)
+
+**Best C++ Performance Achieved:**
 - Forward pass: 10.0 seconds
 - Throughput: 11.7 tokens/sec
+- Total speedup from baseline: 4x (40.25s → 10.0s)
 - Gap to Python: 5.3x slower (Python: 61.9 tokens/sec)
 
+**Successful Optimizations:**
+1. MLP with direct BLAS: 27.5x speedup for MLP component
+2. Attention projections with BLAS: 2.5x speedup for attention
+3. TBB parallelization: 1.3x overall speedup
+4. Vectorized RoPE: 2% improvement
+
+**Failed Attempts:**
+1. Tiled attention with online softmax: >12x slower than baseline
+2. Batch attention computation: Layout errors with xtensor-blas
+
+### Key Learnings
+
+1. **xtensor-blas limitations**: Requires contiguous memory layouts, struggles with strided views
+2. **BLAS is crucial**: Direct BLAS operations via reshape+dot pattern provide massive speedups
+3. **Sequential bottleneck**: Position-by-position attention loop remains main bottleneck (50% of runtime)
+4. **PyTorch approach**: Relies on optimized BLAS libraries (bmm) rather than manual optimization
+
 ### Remaining Opportunities
-1. **Attention computation loop** - The nested position-by-position loops are still the main bottleneck (50% of runtime)
-2. **Memory allocations** - Reduce temporary tensor materializations
-3. **Batch attention computation** - Process multiple positions at once instead of sequential
-4. **Investigate PyTorch C++ implementation** - Learn from their CPU optimizations
+1. **Alternative tensor library**: Consider libraries with better BLAS integration for non-contiguous views
+2. **Custom SIMD implementation**: Hand-written vectorized attention kernel
+3. **Memory layout optimization**: Ensure all tensors are contiguous before operations
+4. **Compiler optimizations**: Profile-guided optimization, link-time optimization
