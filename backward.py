@@ -88,7 +88,8 @@ def main():
     # Flatten for cross-entropy
     loss = torch.nn.functional.cross_entropy(
         shift_logits.view(-1, shift_logits.size(-1)),
-        shift_labels.view(-1)
+        shift_labels.view(-1),
+        ignore_index=pad_token_id,
     )
 
     print(f"Loss: {loss.item()}")
