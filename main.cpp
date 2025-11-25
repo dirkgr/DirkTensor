@@ -36,17 +36,24 @@ float cross_entropy_loss(
     const size_t batch_size = logits.shape(0);
     const size_t seq_len = logits.shape(1);
 
-    const auto exp = xt::eval(xt::exp(logits));
-    const auto exp_sums = xt::sum(exp, {2});
+    // Using the log sum exp trick to keep values in a nice range
+
+    const auto max_logits = xt::eval(xt::amax(logits, {2}));
+    const auto logits_minus_max = logits - xt::view(max_logits, xt::all(), xt::all(), xt::newaxis());
+    const auto exp = xt::exp(logits_minus_max);
+    const auto sum_exp = xt::sum(exp, {2});
 
     float result = 0.0f;
     unsigned int ignored = 0;
     for (size_t b = 0; b < batch_size; ++b) {
         for (size_t s = 0; s < seq_len - 1; ++s) {
-            if (batch(b, s + 1) == ignore_index)
+            if (batch(b, s + 1) == ignore_index) {
                 ignored++;
-            else
-                result -= std::log(exp(b, s, batch(b, s + 1)) / exp_sums(b, s));
+            } else {
+                result -= logits(b, s, batch(b, s + 1));
+                result += max_logits(b, s);
+                result += std::log(sum_exp(b, s));
+            }
         }
     }
     return result / (batch_size * (seq_len - 1) - ignored);
