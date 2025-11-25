@@ -25,9 +25,24 @@ def read_tokens(file_path):
     return tokens
 
 
+def print_gradient_slice(name, grad):
+    """Print first 5 values along each dimension of a gradient tensor."""
+    if grad is None:
+        print(f"{name}: No gradient")
+        return
+
+    print(f"{name}: shape={list(grad.shape)}")
+
+    # Slice to first 5 along each dimension
+    slices = tuple(slice(0, min(5, s)) for s in grad.shape)
+    sliced = grad[slices]
+    print(sliced)
+    print()
+
+
 def main():
     if len(sys.argv) < 2:
-        print("Usage: inference.py <token_file1> [token_file2 ...]", file=sys.stderr)
+        print("Usage: backward.py <token_file1> [token_file2 ...]", file=sys.stderr)
         sys.exit(1)
 
     file_paths = sys.argv[1:]
@@ -39,7 +54,10 @@ def main():
         model_name,
         dtype=torch.float32
     )
-    model.eval()
+
+    # Enable gradients for all parameters
+    for param in model.parameters():
+        param.requires_grad_(True)
 
     # Read all token files
     all_tokens = []
@@ -55,14 +73,36 @@ def main():
     for i, tokens in enumerate(all_tokens):
         batch[i, :len(tokens)] = torch.tensor(tokens, dtype=torch.long)
 
-    # Forward pass
-    with torch.no_grad():
-        outputs = model(batch)
-        logits = outputs.logits
+    # Forward pass (no torch.no_grad() so we can compute gradients)
+    outputs = model(batch)
+    logits = outputs.logits
 
-    # Print logits
-    print(logits.shape)
-    print(logits)
+    # Print logits shape
+    print("Logits shape:", logits.shape)
+
+    # Compute loss for backward pass (cross-entropy with shifted labels)
+    # Shift logits and labels for next-token prediction
+    shift_logits = logits[:, :-1, :].contiguous()
+    shift_labels = batch[:, 1:].contiguous()
+
+    # Flatten for cross-entropy
+    loss = torch.nn.functional.cross_entropy(
+        shift_logits.view(-1, shift_logits.size(-1)),
+        shift_labels.view(-1)
+    )
+
+    print(f"Loss: {loss.item()}")
+
+    # Backward pass
+    loss.backward()
+
+    # Print gradients for all model parameters
+    print("\n" + "="*80)
+    print("GRADIENTS")
+    print("="*80 + "\n")
+
+    for name, param in model.named_parameters():
+        print_gradient_slice(name, param.grad)
 
 if __name__ == "__main__":
     main()
