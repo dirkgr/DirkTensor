@@ -25,6 +25,33 @@ xt::xtensor<uint32_t, 1> read_tokens(std::istream& input) {
     return result;
 }
 
+float cross_entropy_loss(
+    const xt::xtensor<float, 3>& logits,
+    const xt::xtensor<float, 2>& batch,
+    const uint32_t ignore_index
+) {
+    // This takes the batch, not "labels" as a left-shifted version of batch, because we can avoid some
+    // xtensor tensor slicing slowness by doing it this way.
+
+    const size_t batch_size = logits.shape(0);
+    const size_t seq_len = logits.shape(1);
+
+    const auto exp = xt::eval(xt::exp(logits));
+    const auto exp_sums = xt::sum(exp, {2});
+
+    float result = 0.0f;
+    unsigned int ignored = 0;
+    for (size_t b = 0; b < batch_size; ++b) {
+        for (size_t s = 0; s < seq_len - 1; ++s) {
+            if (batch(b, s + 1) == ignore_index)
+                ignored++;
+            else
+                result -= std::log(exp(b, s, batch(b, s + 1)) / exp_sums(b, s));
+        }
+    }
+    return result / (batch_size * (seq_len - 1) - ignored);
+}
+
 int main(int argc, char* argv[]) {
     const OlmoModel model("models/OLMo-2-0425-1B");
     const Detokenizer detokenizer("models/OLMo-2-0425-1B/vocab.txt");
@@ -58,8 +85,9 @@ int main(int argc, char* argv[]) {
     // Forward pass
     xt::xtensor<float, 3> logits = model.forward(batch);
 
-    // Print logits
-    std::cout << logits << std::endl;
+    // Compute cross entropy loss
+    const float loss = cross_entropy_loss(logits, batch, detokenizer.get_pad_token_id());
+    std::cout << loss << std::endl;
 
     return 0;
 }
