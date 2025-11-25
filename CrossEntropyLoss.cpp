@@ -5,7 +5,7 @@
 #include <xtensor/core/xmath.hpp>
 #include <xtensor/views/xview.hpp>
 
-float cross_entropy_loss(
+ce_loss_result ce_loss(
     const xt::xtensor<float, 3>& logits,
     const xt::xtensor<float, 2>& batch,
     const uint32_t ignore_index
@@ -21,7 +21,8 @@ float cross_entropy_loss(
     const auto max_logits = xt::eval(xt::amax(logits, {2}));
     const auto logits_minus_max = logits - xt::view(max_logits, xt::all(), xt::all(), xt::newaxis());
     const auto exp = xt::exp(logits_minus_max);
-    const auto sum_exp = xt::sum(exp, {2});
+    const auto sum_exp = xt::eval(xt::sum(exp, {2}));
+    const auto probs = exp / xt::view(sum_exp, xt::all(), xt::all(), xt::newaxis());
 
     float result = 0.0f;
     unsigned int ignored = 0;
@@ -30,11 +31,13 @@ float cross_entropy_loss(
             if (batch(b, s + 1) == ignore_index) {
                 ignored++;
             } else {
-                result -= logits(b, s, batch(b, s + 1));
-                result += max_logits(b, s);
+                result -= logits_minus_max(b, s, batch(b, s + 1));
                 result += std::log(sum_exp(b, s));
             }
         }
     }
-    return result / (batch_size * (seq_len - 1) - ignored);
+    return {
+        result / (batch_size * (seq_len - 1) - ignored),
+        probs
+    };
 }

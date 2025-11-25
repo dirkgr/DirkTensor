@@ -60,8 +60,8 @@ int main(int argc, char* argv[]) {
     xt::xtensor<float, 3> logits = model.forward(batch);
 
     // Compute cross entropy loss
-    const float loss = cross_entropy_loss(logits, batch, detokenizer.get_pad_token_id());
-    std::cout << loss << std::endl;
+    const auto loss_result = ce_loss(logits, batch, detokenizer.get_pad_token_id());
+    std::cout << loss_result.loss << std::endl;
 
     return 0;
 }
