@@ -76,6 +76,7 @@ add_executable(DirkTensor
     OlmoBlock.h OlmoBlock.cpp
     OlmoModel.h OlmoModel.cpp
     Detokenizer.h Detokenizer.cpp
+    CrossEntropyLoss.h CrossEntropyLoss.cpp
 )
 
 # Link xtensor (header-only library)
