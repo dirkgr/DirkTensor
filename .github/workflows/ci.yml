@@ -27,7 +27,7 @@ jobs:
           sudo apt-get install -y cmake ninja-build libopenblas-dev liblapack-dev
 
       - name: Configure CMake
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DPython3_EXECUTABLE=$(which python3)
 
       - name: Build
         run: cmake --build build
