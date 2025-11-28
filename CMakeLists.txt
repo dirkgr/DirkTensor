@@ -58,8 +58,8 @@ FetchContent_Declare(
     GIT_TAG v2021.13.0
 )
 
-# Disable strict warnings for TBB tests (they fail with -Werror on deprecation warnings)
-set(TBB_STRICT OFF CACHE BOOL "" FORCE)
+# Disable TBB tests - we only want to run our own tests
+set(TBB_TEST OFF CACHE BOOL "" FORCE)
 
 # Make the libraries available
 FetchContent_MakeAvailable(xtl xsimd xtensor xtensor-blas googletest TBB)
