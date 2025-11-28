@@ -30,7 +30,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Python dependencies
-        run: pip install pytest transformers numpy torch --index-url https://download.pytorch.org/whl/cpu
+        run: pip install pytest transformers numpy torch --extra-index-url https://download.pytorch.org/whl/cpu
 
       - name: Install C++ dependencies
         run: |
