@@ -58,6 +58,9 @@ FetchContent_Declare(
     GIT_TAG v2021.13.0
 )
 
+# Disable TBB tests - we only want to run our own tests
+set(TBB_TEST OFF CACHE BOOL "" FORCE)
+
 # Make the libraries available
 FetchContent_MakeAvailable(xtl xsimd xtensor xtensor-blas googletest TBB)
 
@@ -76,6 +79,7 @@ add_executable(DirkTensor
     OlmoBlock.h OlmoBlock.cpp
     OlmoModel.h OlmoModel.cpp
     Detokenizer.h Detokenizer.cpp
+    CrossEntropyLoss.h CrossEntropyLoss.cpp
 )
 
 # Link xtensor (header-only library)

@@ -7,6 +7,7 @@
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/io/xio.hpp>
 
+#include "CrossEntropyLoss.h"
 #include "Detokenizer.h"
 #include "OlmoModel.h"
 
@@ -58,8 +59,9 @@ int main(int argc, char* argv[]) {
     // Forward pass
     xt::xtensor<float, 3> logits = model.forward(batch);
 
-    // Print logits
-    std::cout << logits << std::endl;
+    // Compute cross entropy loss
+    const auto loss_result = ce_loss(logits, batch, detokenizer.get_pad_token_id());
+    std::cout << loss_result.loss << std::endl;
 
     return 0;
 }
