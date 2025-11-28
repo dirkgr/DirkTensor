@@ -12,8 +12,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache LFS files
+        uses: actions/cache@v4
         with:
-          lfs: true
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.gitattributes', 'models/**') }}
+          restore-keys: |
+            lfs-
+
+      - name: Pull LFS files
+        run: git lfs pull
 
       - name: Set up Python
         uses: actions/setup-python@v5
