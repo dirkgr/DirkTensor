@@ -7,13 +7,13 @@
 #include <xtensor-blas/xlinalg.hpp>
 
 OlmoMlp::OlmoMlp(const std::string& folder, const unsigned int index) {
-    m_upProjection =
+    m_upProjection.w =
         xt::load_npy<float>(
             std::format("{}/model.layers.{}.mlp.up_proj.weight.npy", folder, index));
-    m_gateProjection =
+    m_gateProjection.w =
         xt::load_npy<float>(
             std::format("{}/model.layers.{}.mlp.gate_proj.weight.npy", folder, index));
-    m_downProjection =
+    m_downProjection.w =
         xt::load_npy<float>(
             std::format("{}/model.layers.{}.mlp.down_proj.weight.npy", folder, index));
 }
@@ -33,8 +33,8 @@ xt::xtensor<float, 3> OlmoMlp::forward(const xt::xtensor<float, 3>& input) {
     // Perform matrix multiplications using direct BLAS GEMM via dot
     // Weights are stored as [hidden_size, d_model], so we need to transpose them
     // input_2d is [batch*seq, d_model], weights transposed become [d_model, hidden_size]
-    auto projected_2d = xt::linalg::dot(input_2d, xt::transpose(m_upProjection));
-    auto gate_2d = xt::linalg::dot(input_2d, xt::transpose(m_gateProjection));
+    auto projected_2d = xt::linalg::dot(input_2d, xt::transpose(m_upProjection.w));
+    auto gate_2d = xt::linalg::dot(input_2d, xt::transpose(m_gateProjection.w));
 
     // Apply SiLU activation: gate * sigmoid(gate) * projected
     // Use scalar operations to avoid xtensor expression template overhead
@@ -52,7 +52,7 @@ xt::xtensor<float, 3> OlmoMlp::forward(const xt::xtensor<float, 3>& input) {
     // Final projection back to d_model
     // m_downProjection is [d_model, hidden_size], so we need to transpose it
     // activated_2d is [batch*seq, hidden_size], transposed weight is [hidden_size, d_model]
-    auto result_2d = xt::linalg::dot(activated_2d, xt::transpose(m_downProjection));
+    auto result_2d = xt::linalg::dot(activated_2d, xt::transpose(m_downProjection.w));
 
     // Reshape back to 3D [batch, seq, d_model]
     auto result = xt::reshape_view(result_2d, {batch_size, seq_len, d_model});

@@ -2,6 +2,8 @@
 
 #include <string>
 #include <xtensor/containers/xtensor.hpp>
+#include "param.h"
+
 
 class OlmoMlp {
 public:
@@ -10,7 +12,7 @@ public:
     xt::xtensor<float, 3> forward(const xt::xtensor<float, 3>& input);
 
 private:
-    xt::xtensor<float, 2> m_upProjection;
-    xt::xtensor<float, 2> m_gateProjection;
-    xt::xtensor<float, 2> m_downProjection;
+    param<2> m_upProjection;
+    param<2> m_gateProjection;
+    param<2> m_downProjection;
 };

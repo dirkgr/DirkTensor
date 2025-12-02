@@ -35,10 +35,10 @@ OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index
     m_qNorm(std::format("{}/model.layers.{}.self_attn.q_norm.weight.npy", folder, index)),
     m_kNorm(std::format("{}/model.layers.{}.self_attn.k_norm.weight.npy", folder, index))
 {
-    m_qProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.q_proj.weight.npy", folder, index));
-    m_kProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.k_proj.weight.npy", folder, index));
-    m_vProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.v_proj.weight.npy", folder, index));
-    m_oProj = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.o_proj.weight.npy", folder, index));
+    m_qProj.w = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.q_proj.weight.npy", folder, index));
+    m_kProj.w = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.k_proj.weight.npy", folder, index));
+    m_vProj.w = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.v_proj.weight.npy", folder, index));
+    m_oProj.w = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.o_proj.weight.npy", folder, index));
 }
 
 
@@ -53,17 +53,17 @@ xt::xtensor<float, 3> OlmoAttention::forward(const xt::xtensor<float, 3>& input)
 
     // Project Q, K, V using efficient BLAS operations
     // Weight matrices are [d_model, d_model], need transpose for multiplication
-    auto projected_qs_2d = xt::linalg::dot(input_2d, xt::transpose(m_qProj));
+    auto projected_qs_2d = xt::linalg::dot(input_2d, xt::transpose(m_qProj.w));
     auto projected_qs = xt::reshape_view(projected_qs_2d, {batch_size, seq_len, d_model});
     const auto normed_qs = m_qNorm.forward(projected_qs);
     const auto qs = xt::reshape_view(normed_qs, {batch_size, seq_len, n_heads, head_dim});
 
-    auto projected_ks_2d = xt::linalg::dot(input_2d, xt::transpose(m_kProj));
+    auto projected_ks_2d = xt::linalg::dot(input_2d, xt::transpose(m_kProj.w));
     auto projected_ks = xt::reshape_view(projected_ks_2d, {batch_size, seq_len, d_model});
     const auto normed_ks = m_kNorm.forward(projected_ks);
     const auto ks = xt::reshape_view(normed_ks, {batch_size, seq_len, n_heads, head_dim});
 
-    auto projected_vs_2d = xt::linalg::dot(input_2d, xt::transpose(m_vProj));
+    auto projected_vs_2d = xt::linalg::dot(input_2d, xt::transpose(m_vProj.w));
     auto projected_vs = xt::reshape_view(projected_vs_2d, {batch_size, seq_len, d_model});
     const auto vs = xt::eval(xt::reshape_view(projected_vs, {batch_size, seq_len, n_heads, head_dim}));
 
@@ -140,7 +140,7 @@ xt::xtensor<float, 3> OlmoAttention::forward(const xt::xtensor<float, 3>& input)
 
     // Output projection using efficient BLAS
     auto output_2d = xt::reshape_view(attention_output, {batch_size * seq_len, d_model});
-    auto result_2d = xt::linalg::dot(output_2d, xt::transpose(m_oProj));
+    auto result_2d = xt::linalg::dot(output_2d, xt::transpose(m_oProj.w));
     auto result = xt::reshape_view(result_2d, {batch_size, seq_len, d_model});
 
     return xt::eval(result);

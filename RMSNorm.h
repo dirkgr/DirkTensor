@@ -2,6 +2,8 @@
 
 #include <string>
 #include <xtensor/containers/xtensor.hpp>
+#include "param.h"
+
 
 class RMSNorm {
 public:
@@ -12,5 +14,5 @@ public:
     xt::xtensor<float, 3> forward(const xt::xtensor<float, 3>& input) const;
 
 private:
-    xt::xtensor<float, 1> m_weight;
+    param<1> m_weight;
 };

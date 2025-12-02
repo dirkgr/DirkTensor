@@ -4,6 +4,8 @@
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/views/xview.hpp>
 #include "RMSNorm.h"
+#include "param.h"
+
 
 class OlmoAttention {
 public:
@@ -12,12 +14,12 @@ public:
 
 private:
     // parameters
-    xt::xtensor<float, 2> m_qProj;
+    param<2> m_qProj;
     RMSNorm m_qNorm;
-    xt::xtensor<float, 2> m_kProj;
+    param<2> m_kProj;
     RMSNorm m_kNorm;
-    xt::xtensor<float, 2> m_vProj;
-    xt::xtensor<float, 2> m_oProj;
+    param<2> m_vProj;
+    param<2> m_oProj;
 
     static xt::xtensor<float, 4> apply_rope(const xt::xtensor<float, 4>& input);
 };

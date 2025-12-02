@@ -10,11 +10,11 @@
 #include "xtutil.h"
 
 OlmoModel::OlmoModel(const std::string& folder) : m_norm(folder + "/model.norm.weight.npy") {
-    m_embeddings = xt::load_npy<float>(folder + "/model.embed_tokens.weight.npy");
+    m_embeddings.w = xt::load_npy<float>(folder + "/model.embed_tokens.weight.npy");
     assert(m_embeddings.shape().size() == 2);
     assert(m_embeddings.shape()[1] == d_model);
 
-    m_lmHead = xt::load_npy<float>(folder + "/lm_head.weight.npy");
+    m_lmHead.w = xt::load_npy<float>(folder + "/lm_head.weight.npy");
 
     for(size_t i = 0; i < n_layers; i++)
         m_blocks[i] = std::make_unique<OlmoBlock>(folder, i);
@@ -29,7 +29,7 @@ xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) 
     });
     for (size_t b = 0; b < batch.shape(0); b++) {
         for (size_t i = 0; i < batch.shape(1); i++) {
-            xt::noalias(xt::view(x, b, i)) = xt::view(m_embeddings, batch(b, i));
+            xt::noalias(xt::view(x, b, i)) = xt::view(m_embeddings.w, batch(b, i));
         }
     }
 
@@ -51,7 +51,8 @@ xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) 
 
     // Matrix multiply: [batch*seq, d_model] @ [d_model, vocab_size] -> [batch*seq, vocab_size]
     // m_lmHead is [vocab_size, d_model], so we need to transpose it
-    auto logits_2d = xt::linalg::dot(x_2d, xt::transpose(m_lmHead));
+    // TODO: transpose this when loading
+    auto logits_2d = xt::linalg::dot(x_2d, xt::transpose(m_lmHead.w));
 
     // Reshape back to [batch, seq, vocab_size]
     return xt::eval(xt::reshape_view(logits_2d, {batch_size, seq_len, vocab_size}));
