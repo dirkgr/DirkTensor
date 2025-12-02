@@ -20,7 +20,7 @@ OlmoModel::OlmoModel(const std::string& folder) : m_norm(folder + "/model.norm.w
         m_blocks[i] = std::make_unique<OlmoBlock>(folder, i);
 }
 
-xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) const {
+xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) {
     // Embedding
     xt::xtensor<float, 3> x = xt::empty<float>({
         batch.shape(0),
@@ -38,7 +38,7 @@ xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) 
         x = m_blocks[i]->forward(x);
 
     // Norm
-    x = m_norm.forward(x);
+    m_actBeforeLmHead = m_norm.forward(x);
 
     // LM Head - optimized with reshape + dot instead of tensordot
     const size_t batch_size = x.shape(0);
@@ -47,13 +47,36 @@ xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) 
     const size_t vocab_size = m_lmHead.shape(0);
 
     // Reshape from [batch, seq, d_model] to [batch*seq, d_model]
-    auto x_2d = xt::reshape_view(x, {batch_size * seq_len, hidden_dim});
+    auto x_2d = xt::reshape_view(m_actBeforeLmHead, {batch_size * seq_len, hidden_dim});
 
     // Matrix multiply: [batch*seq, d_model] @ [d_model, vocab_size] -> [batch*seq, vocab_size]
     // m_lmHead is [vocab_size, d_model], so we need to transpose it
-    // TODO: transpose this when loading
     auto logits_2d = xt::linalg::dot(x_2d, xt::transpose(m_lmHead.w));
 
     // Reshape back to [batch, seq, vocab_size]
     return xt::eval(xt::reshape_view(logits_2d, {batch_size, seq_len, vocab_size}));
+}
+
+void OlmoModel::backward(const xt::xtensor<float, 3>& grad) {
+    if (m_lmHead.grad.size() == 0)
+        m_lmHead.grad = xt::zeros_like(m_lmHead.w);
+
+    const size_t batch_size = grad.shape(0);
+    const size_t seq_len = grad.shape(1);
+    const size_t vocab_size = grad.shape(2);
+    assert(m_lmHead.shape(0) == vocab_size);
+    const size_t d_model = m_lmHead.shape(1);
+
+    const auto reshapedActBeforeLmHead = xt::reshape_view(
+        m_actBeforeLmHead,
+        {batch_size * seq_len, d_model});
+    const auto reshapedGrad = xt::reshape_view(
+        grad,
+        {batch_size * seq_len, vocab_size});
+    m_lmHead.grad += xt::linalg::dot(       // (vocab_size, d_model)
+        xt::transpose(reshapedGrad),        // (vocab_size, batch_size * seq_len)
+        reshapedActBeforeLmHead);           // (batch_size * seq_len, d_model)
+
+    print_shape(m_lmHead.grad);
+    std::cout << "m_lmHead.grad" << std::endl << m_lmHead.grad << std::endl;
 }

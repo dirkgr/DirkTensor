@@ -14,11 +14,16 @@ class OlmoModel {
 public:
     explicit OlmoModel(const std::string& folder);
 
-    xt::xtensor<float, 3> forward(const xt::xtensor<uint32_t, 2>& batch) const;
+    xt::xtensor<float, 3> forward(const xt::xtensor<uint32_t, 2>& batch);
+    void backward(const xt::xtensor<float, 3>& grad);
 
 private:
+    // parameters
     param<2> m_embeddings;
     std::array<std::unique_ptr<OlmoBlock>, n_layers> m_blocks;
     RMSNorm m_norm;
     param<2> m_lmHead;
+
+    // activations
+    xt::xtensor<float, 3> m_actBeforeLmHead;
 };

@@ -27,7 +27,7 @@ xt::xtensor<uint32_t, 1> read_tokens(std::istream& input) {
 }
 
 int main(int argc, char* argv[]) {
-    const OlmoModel model("models/OLMo-2-0425-1B");
+    OlmoModel model("models/OLMo-2-0425-1B");
     const Detokenizer detokenizer("models/OLMo-2-0425-1B/vocab.txt");
 
     // Read files and determine actual max sequence length
@@ -60,8 +60,30 @@ int main(int argc, char* argv[]) {
     xt::xtensor<float, 3> logits = model.forward(batch);
 
     // Compute cross entropy loss
-    const auto loss_result = ce_loss(logits, batch, detokenizer.get_pad_token_id());
+    auto loss_result = ce_loss(logits, batch, detokenizer.get_pad_token_id());
     std::cout << loss_result.loss << std::endl;
+
+    // Compute gradient through CE loss.
+    // We're repurposing loss_result.probs as grad because it saves us a big tensor copy.
+    size_t batch_size = batch.shape(0) * batch.shape(1);
+    for (size_t b = 0; b < batch.shape(0); ++b) {
+        for (size_t s = 1; s < batch.shape(1); ++s) {
+            const auto token_id = batch(b, s);
+            if (token_id == detokenizer.get_pad_token_id()) {
+                xt::view(loss_result.probs, b, s - 1, xt::all()) = 0;
+                batch_size -= 1;
+            } else {
+                loss_result.probs(b, s - 1, token_id) -= 1.0f;
+            }
+        }
+    }
+    // last tokens never have grads, because they don't have targets
+    xt::view(loss_result.probs, xt::all(), batch.shape(1) - 1, xt::all()) = 0;
+    batch_size -= batch.shape(0);
+    // Normalize by number of tokens
+    loss_result.probs /= batch_size;
+
+    model.backward(loss_result.probs);
 
     return 0;
 }
