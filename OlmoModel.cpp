@@ -12,7 +12,7 @@
 OlmoModel::OlmoModel(const std::string& folder) : m_norm(folder + "/model.norm.weight.npy") {
     m_embeddings.w = xt::load_npy<float>(folder + "/model.embed_tokens.weight.npy");
     assert(m_embeddings.shape().size() == 2);
-    assert(m_embeddings.shape()[1] == d_model);
+    assert(m_embeddings.shape(1) == d_model);
 
     m_lmHead.w = xt::load_npy<float>(folder + "/lm_head.weight.npy");
 
