@@ -10,5 +10,4 @@ struct ce_loss_result {
 ce_loss_result ce_loss(
     const xt::xtensor<float, 3>& logits,
     const xt::xtensor<float, 2>& batch,
-    uint32_t ignore_index
-);
+    uint32_t ignore_index);
