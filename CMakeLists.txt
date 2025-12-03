@@ -81,6 +81,8 @@ add_executable(DirkTensor
     Detokenizer.h Detokenizer.cpp
     CrossEntropyLoss.h CrossEntropyLoss.cpp
         param.h
+        OlmoLmHead.cpp
+        OlmoLmHead.h
 )
 
 # Link xtensor (header-only library)
@@ -108,6 +110,8 @@ add_executable(test_olmo_model
     OlmoModel.h OlmoModel.cpp
     Detokenizer.h Detokenizer.cpp
         param.h
+        OlmoLmHead.cpp
+        OlmoLmHead.h
 )
 
 target_link_libraries(test_olmo_model xtensor xtl xsimd xtensor-blas TBB::tbb ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} GTest::gtest GTest::gtest_main)

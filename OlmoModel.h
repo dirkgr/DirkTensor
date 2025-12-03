@@ -5,6 +5,7 @@
 #include <string>
 #include <xtensor/containers/xtensor.hpp>
 #include "OlmoBlock.h"
+#include "OlmoLmHead.h"
 #include "RMSNorm.h"
 #include "model_config.h"
 #include "param.h"
@@ -22,8 +23,5 @@ private:
     param<2> m_embeddings;
     std::array<std::unique_ptr<OlmoBlock>, n_layers> m_blocks;
     RMSNorm m_norm;
-    param<2> m_lmHead;
-
-    // activations
-    xt::xtensor<float, 3> m_actBeforeLmHead;
+    OlmoLmHead m_lmHead;
 };
