@@ -19,3 +19,12 @@ xt::xtensor<float, 3> OlmoBlock::forward(const xt::xtensor<float, 3>& input) {
     const auto normed_after_mlp = m_postMlpNorm.forward(after_mlp);
     return h + normed_after_mlp;
 }
+
+xt::xtensor<float, 3> OlmoBlock::backward(const xt::xtensor<float, 3>& d_output) {
+    auto grad = m_postMlpNorm.backward(d_output);
+    grad = m_mlp.backward(grad);
+    auto d_h = grad + d_output;
+    grad = m_postAttentionNorm.backward(d_h);
+    grad = m_attention.backward(grad);
+    return grad + d_h;
+}
