@@ -16,7 +16,7 @@ public:
     explicit OlmoModel(const std::string& folder);
 
     xt::xtensor<float, 3> forward(const xt::xtensor<uint32_t, 2>& batch);
-    void backward(const xt::xtensor<float, 3>& grad);
+    void backward(const xt::xtensor<float, 3>& d_output);
 
 private:
     // parameters

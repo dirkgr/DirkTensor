@@ -44,8 +44,12 @@ xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) 
     return m_lmHead.forward(normed_x);
 }
 
-void OlmoModel::backward(const xt::xtensor<float, 3>& grad) {
-    const auto grad_from_lmhead = m_lmHead.backward(grad);
+void OlmoModel::backward(const xt::xtensor<float, 3>& d_output) {
+    auto grad = m_lmHead.backward(d_output);
+    grad = m_norm.backward(grad);
+
+    for(int i = n_layers - 1; i >= 0; i--)
+        grad = m_blocks[i]->backward(grad);
 
     // TODO
 }
