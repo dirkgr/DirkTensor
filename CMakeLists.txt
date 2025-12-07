@@ -99,6 +99,18 @@ target_compile_options(DirkTensor PRIVATE
     $<$<CONFIG:Debug>:${OPTIMIZATION_FLAGS_DEBUG}>
 )
 
+add_executable(ArithmeticIntensityBench
+        arithmetic_intensity_bench.cpp
+)
+
+# Enable optimizations for release builds
+target_compile_options(ArithmeticIntensityBench PRIVATE
+        $<$<CONFIG:Release>:${OPTIMIZATION_FLAGS_RELEASE}>
+        $<$<CONFIG:RelWithDebInfo>:${OPTIMIZATION_FLAGS_RELWITHDEBINFO}>
+        $<$<CONFIG:Debug>:${OPTIMIZATION_FLAGS_DEBUG}>
+)
+
+
 # Test executable for OlmoModel
 add_executable(test_olmo_model
     test_olmo_model.cpp
