@@ -66,43 +66,75 @@ xt::xtensor<float, 3> OlmoMlp::backward(const xt::xtensor<float, 3>& d_output) {
 
     auto d_output_2d = xt::reshape_view(d_output, {batch_size * seq_len, d_model});
 
+    if (m_downProjection.grad.size() == 0)
+        m_downProjection.grad = xt::zeros_like(m_downProjection.w);
     m_downProjection.grad += xt::linalg::dot(
-        xt::transpose(m_act_activated_2d), // (hidden_size, tokens)
-        d_output_2d                            // (tokens, d_model)
+        xt::transpose(d_output_2d), // (d_model, tokens)
+        m_act_activated_2d              // (tokens, hidden_size)
     );
 
     const auto d_activated_2d = xt::linalg::dot( // (tokens, hidden_size)
         d_output_2d,                           // (tokens, d_model)
-        xt::transpose(m_downProjection.w)  // (d_model, hidden_size)
+        m_downProjection.w                     // (d_model, hidden_size)
     );
 
     // TODO: these are all element-wise. They will run faster if we do everything one element at a time
     // instead of letting xtensor handle it. Then we can also efficiently handle the case where up is 0.
     const auto d_silu = d_activated_2d * m_act_up;
-    const auto d_up = d_activated_2d * (m_act_activated_2d / m_act_up); // recomputation, careful when act_up is 0
+    const auto d_up = xt::eval(d_activated_2d * (m_act_activated_2d / m_act_up)); // recomputation, careful when act_up is 0
     const auto sig = xt::eval(1.0f / (1.0f + xt::exp(-m_act_gate))); // recomputation
-    const auto d_gate = d_silu * sig * (1 + m_act_gate * (1 - sig));
+    const auto d_gate = xt::eval(d_silu * sig * (1 + m_act_gate * (1 - sig)));
 
-    m_gateProjection.grad += xt::linalg::dot(
-        xt::transpose(m_act_input_2d),
-        d_gate
+    if (m_gateProjection.grad.size() == 0)
+        m_gateProjection.grad = xt::zeros_like(m_gateProjection.w);
+    m_gateProjection.grad += xt::linalg::dot(  // (hidden_size, d_model)
+        xt::transpose(d_gate),                 // (hidden_size, tokens)
+        m_act_input_2d                         // (tokens, d_model)
     );
 
-    m_upProjection.grad += xt::linalg::dot(
-        xt::transpose(m_act_input_2d),
-        d_up
+    if (m_upProjection.grad.size() == 0)
+        m_upProjection.grad = xt::zeros_like(m_upProjection.w);
+    m_upProjection.grad += xt::linalg::dot( // (hidden_size, d_model)
+        xt::transpose(d_up),                // (hidden_size, tokens)
+        m_act_input_2d                      // (tokens, d_model)
     );
 
-    xt::xtensor<float, 3> d_input = xt::empty<float>({batch_size, seq_len, d_model});
-    auto d_input_2d = xt::reshape_view(d_input, {batch_size * seq_len, d_model});
-    xt::noalias(d_input_2d) = xt::linalg::dot(
-        d_gate,
-        xt::transpose(m_gateProjection.w)
-    );
-    xt::noalias(d_input_2d) += xt::linalg::dot(
-        d_up,
-        xt::transpose(m_upProjection.w)
+    /*
+    // Fast but wrong
+    // d_input = d_gate @ m_gateProjection
+    cblas_sgemm(
+        CblasRowMajor,
+        CblasNoTrans,
+        CblasNoTrans,
+        batch_size * seq_len, d_model, hidden_size,
+        1.0f,            // alpha
+        d_gate.data(),
+        hidden_size,           // lda: stride of d_gate
+        m_gateProjection.w.data(),
+        d_model,               // ldb: stride of m_gateProjection
+        0.0f,                  // beta = 0 means overwrite what is already there
+        d_input.data(),        // write directly into d_input's buffer
+        d_model                // ldc: stride of output
     );
 
-    return d_input;
+    // d_input += d_up @ m_upProjection
+    cblas_sgemm(
+        CblasRowMajor,
+        CblasNoTrans,
+        CblasNoTrans,
+        batch_size * seq_len, d_model, hidden_size,
+        1.0f,            // alpha
+        d_up.data(),
+        hidden_size,           // lda: stride of d_gate
+        m_upProjection.w.data(),
+        d_model,               // ldb: stride of m_upProjection
+        1.0f,                  // beta = 1 means C += result
+        d_input.data(),        // write directly into d_input's buffer
+        d_model                // ldc: stride of output
+    );
+    */
+
+    xt::xtensor<float, 2> d_input_2d = xt::linalg::dot(d_gate, m_gateProjection.w)
+                                     + xt::linalg::dot(d_up, m_upProjection.w);
+    return xt::eval(xt::reshape_view(d_input_2d, {batch_size, seq_len, d_model}));
 }
