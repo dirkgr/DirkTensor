@@ -125,44 +125,46 @@ xt::xtensor<float, 3> OlmoMlp::backward(const xt::xtensor<float, 3>& d_output) {
         m_act_input_2d                      // (tokens, d_model)
     );
 
-    /*
-    // Fast but wrong
-    // d_input = d_gate @ m_gateProjection
+    // Pre-allocate output as 3D tensor to avoid reshape copy at the end
+    // d_input = d_gate @ W_gate + d_up @ W_up
+    // Shapes: (tokens, hidden) @ (hidden, d_model) = (tokens, d_model)
+    xt::xtensor<float, 3> d_input = xt::empty<float>({batch_size, seq_len, d_model});
+
+    const int M = static_cast<int>(batch_size * seq_len);  // tokens
+    const int N = static_cast<int>(d_model);
+    const int K = static_cast<int>(hidden_size);
+
+    // d_input = d_gate @ W_gate (beta=0 overwrites d_input)
     cblas_sgemm(
         CblasRowMajor,
         CblasNoTrans,
         CblasNoTrans,
-        batch_size * seq_len, d_model, hidden_size,
-        1.0f,            // alpha
-        d_gate.data(),
-        hidden_size,           // lda: stride of d_gate
-        m_gateProjection.w.data(),
-        d_model,               // ldb: stride of m_gateProjection
-        0.0f,                  // beta = 0 means overwrite what is already there
-        d_input.data(),        // write directly into d_input's buffer
-        d_model                // ldc: stride of output
+        M, N, K,
+        1.0f,                           // alpha
+        d_gate.data(),                  // A: (M, K)
+        K,                              // lda: stride of A
+        m_gateProjection.w.data(),      // B: (K, N)
+        N,                              // ldb: stride of B
+        0.0f,                           // beta = 0: overwrite C
+        d_input.data(),                 // C: (M, N)
+        N                               // ldc: stride of C
     );
 
-    // d_input += d_up @ m_upProjection
+    // d_input += d_up @ W_up (beta=1 accumulates into d_input)
     cblas_sgemm(
         CblasRowMajor,
         CblasNoTrans,
         CblasNoTrans,
-        batch_size * seq_len, d_model, hidden_size,
-        1.0f,            // alpha
-        d_up.data(),
-        hidden_size,           // lda: stride of d_gate
-        m_upProjection.w.data(),
-        d_model,               // ldb: stride of m_upProjection
-        1.0f,                  // beta = 1 means C += result
-        d_input.data(),        // write directly into d_input's buffer
-        d_model                // ldc: stride of output
+        M, N, K,
+        1.0f,                           // alpha
+        d_up.data(),                    // A: (M, K)
+        K,                              // lda: stride of A
+        m_upProjection.w.data(),        // B: (K, N)
+        N,                              // ldb: stride of B
+        1.0f,                           // beta = 1: C += result
+        d_input.data(),                 // C: (M, N)
+        N                               // ldc: stride of C
     );
-    */
 
-    xt::xtensor<float, 2> d_input_2d =
-        xt::linalg::dot(d_gate, m_gateProjection.w) +
-        xt::linalg::dot(d_up, m_upProjection.w);
-
-    return xt::eval(xt::reshape_view(d_input_2d, {batch_size, seq_len, d_model}));
+    return d_input;
 }
