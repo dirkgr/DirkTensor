@@ -133,7 +133,9 @@ xt::xtensor<float, 3> OlmoMlp::backward(const xt::xtensor<float, 3>& d_output) {
     );
     */
 
-    xt::xtensor<float, 2> d_input_2d = xt::linalg::dot(d_gate, m_gateProjection.w)
-                                     + xt::linalg::dot(d_up, m_upProjection.w);
+    xt::xtensor<float, 2> d_input_2d =
+        xt::linalg::dot(d_gate, m_gateProjection.w) +
+        xt::linalg::dot(d_up, m_upProjection.w);
+
     return xt::eval(xt::reshape_view(d_input_2d, {batch_size, seq_len, d_model}));
 }
