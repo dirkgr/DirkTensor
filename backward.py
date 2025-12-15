@@ -25,6 +25,17 @@ def read_tokens(file_path):
     return tokens
 
 
+def backward_hook(module, grad_input, grad_output):
+    """Backward hook - no-op for debugger attachment."""
+    pass  # Set breakpoint here to inspect grad_output
+
+
+def register_backward_hooks(model):
+    """Register pre-backward hooks on all modules for debugging."""
+    for name, module in model.named_modules():
+        module.register_full_backward_hook(backward_hook)
+
+
 def print_gradient_slice(name, grad):
     """Print first 5 values along each dimension of a gradient tensor."""
     if grad is None:
@@ -59,6 +70,9 @@ def main():
     for param in model.parameters():
         param.requires_grad_(True)
 
+    # Register pre-backward hooks for debugging
+    register_backward_hooks(model)
+
     # Read all token files
     all_tokens = []
     for file_path in file_paths:
@@ -90,7 +104,7 @@ def main():
         shift_logits.view(-1, shift_logits.size(-1)),
         shift_labels.view(-1),
         ignore_index=pad_token_id,
-    )
+        )
 
     print(f"Loss: {loss.item()}")
 
