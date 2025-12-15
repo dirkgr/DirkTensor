@@ -1,7 +1,6 @@
 #include "OlmoMlp.h"
 
 #include <format>
-#include <iostream>
 #include <xtensor/core/xmath.hpp>
 #include <xtensor/core/xnoalias.hpp>
 #include <xtensor/io/xnpy.hpp>
