@@ -77,12 +77,39 @@ xt::xtensor<float, 3> OlmoMlp::backward(const xt::xtensor<float, 3>& d_output) {
         m_downProjection.w                     // (d_model, hidden_size)
     );
 
-    // TODO: these are all element-wise. They will run faster if we do everything one element at a time
-    // instead of letting xtensor handle it. Then we can also efficiently handle the case where up is 0.
-    const auto d_silu = d_activated_2d * m_act_up;
-    const auto d_up = xt::eval(d_activated_2d * (m_act_activated_2d / m_act_up)); // recomputation, careful when act_up is 0
-    const auto sig = xt::eval(1.0f / (1.0f + xt::exp(-m_act_gate))); // recomputation
-    const auto d_gate = xt::eval(d_silu * sig * (1 + m_act_gate * (1 - sig)));
+    // Compute d_up and d_gate element-wise in a single pass
+    // This avoids intermediate allocations and handles up=0 correctly
+    xt::xtensor<float, 2> d_up = xt::empty<float>({batch_size * seq_len, hidden_size});
+    xt::xtensor<float, 2> d_gate = xt::empty<float>({batch_size * seq_len, hidden_size});
+
+    const float* const d_act_ptr = d_activated_2d.data();
+    const float* const up_ptr = m_act_up.data();
+    const float* const gate_ptr = m_act_gate.data();
+    float* const d_up_ptr = d_up.data();
+    float* const d_gate_ptr = d_gate.data();
+
+    const size_t total = batch_size * seq_len * hidden_size;
+    for (size_t i = 0; i < total; ++i) {
+        const float d_act = d_act_ptr[i];
+        const float up = up_ptr[i];
+        const float gate = gate_ptr[i];
+
+        // sig = sigmoid(gate)
+        const float sig = 1.0f / (1.0f + std::exp(-gate));
+        // silu(gate) = gate * sigmoid(gate)
+        const float silu = gate * sig;
+
+        // d_up = d_activated * silu(gate)
+        // This is correct even when up=0 (avoids division by zero)
+        d_up_ptr[i] = d_act * silu;
+
+        // d_silu = d_activated * up
+        const float d_silu = d_act * up;
+
+        // d_gate = d_silu * sig * (1 + gate * (1 - sig))
+        // This is the derivative of silu: d(silu)/d(gate) = sig * (1 + gate * (1 - sig))
+        d_gate_ptr[i] = d_silu * sig * (1.0f + gate * (1.0f - sig));
+    }
 
     if (m_gateProjection.grad.size() == 0)
         m_gateProjection.grad = xt::zeros_like(m_gateProjection.w);
