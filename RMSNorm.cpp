@@ -21,12 +21,15 @@ xt::xtensor<float, 3> RMSNorm::forward(const xt::xtensor<float, 3>& input) {
 }
 
 xt::xtensor<float, 3> RMSNorm::backward(const xt::xtensor<float, 3>& d_output) {
-    const auto c = xt::eval(xt::mean(d_output * m_output));
+    // c is computed per (batch, seq) position, averaging over d_model dimension
+    const auto c = xt::eval(xt::mean(d_output * m_output, {2}));  // shape: (batch, seq)
 
     if (m_weight.grad.size() <= 0)
         m_weight.grad = xt::zeros_like(m_weight.w);
     const auto act_normed = xt::eval(m_output / m_weight.w); // recomputed from the forward
     m_weight.grad += xt::sum(d_output * act_normed, {0, 1});
 
-    return (m_weight.w * d_output - act_normed * c) / xt::view(m_act_rms, xt::all(), xt::all(), xt::newaxis());
+    // Broadcast c to (batch, seq, 1) for element-wise operations
+    const auto c_expanded = xt::view(c, xt::all(), xt::all(), xt::newaxis());
+    return (m_weight.w * d_output - act_normed * c_expanded) / xt::view(m_act_rms, xt::all(), xt::all(), xt::newaxis());
 }
