@@ -23,7 +23,7 @@ xt::xtensor<float, 3> OlmoBlock::forward(const xt::xtensor<float, 3>& input) {
 xt::xtensor<float, 3> OlmoBlock::backward(const xt::xtensor<float, 3>& d_output) {
     auto grad = m_postMlpNorm.backward(d_output);
     grad = m_mlp.backward(grad);
-    auto d_h = grad + d_output;
+    xt::xtensor<float, 3> d_h = grad + d_output;  // Must evaluate, not lazy expression
     grad = m_postAttentionNorm.backward(d_h);
     grad = m_attention.backward(grad);
     return grad + d_h;
