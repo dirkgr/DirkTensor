@@ -37,15 +37,21 @@ xt::xtensor<float, 3> OlmoLmHead::backward(const xt::xtensor<float, 3>& grad) {
     const size_t d_model = m_lmHead.shape(1);
 
     // gradient with respect to the lm head weights
-    const auto reshaped_activations_before = xt::reshape_view(
+    xt::xtensor<float, 2> reshaped_activations_before = xt::reshape_view(
         m_activationsBefore,
         {batch_size * seq_len, d_model});
-    const auto reshaped_grad = xt::reshape_view(
+    xt::xtensor<float, 2> reshaped_grad = xt::reshape_view(
         grad,
         {batch_size * seq_len, vocab_size});
-    m_lmHead.grad += xt::linalg::dot(       // (vocab_size, d_model)
-        xt::transpose(reshaped_grad),       // (vocab_size, batch_size * seq_len)
-        reshaped_activations_before);       // (batch_size * seq_len, d_model)
+    // grad += reshaped_grad^T @ reshaped_activations_before
+    const int tokens = static_cast<int>(batch_size * seq_len);
+    const int vs = static_cast<int>(vocab_size);
+    const int dm = static_cast<int>(d_model);
+    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+        vs, dm, tokens,
+        1.0f, reshaped_grad.data(), vs,
+        reshaped_activations_before.data(), dm,
+        1.0f, m_lmHead.grad.data(), dm);
 
     // gradient with respect to the input
     const auto reshaped_result = xt::linalg::dot(

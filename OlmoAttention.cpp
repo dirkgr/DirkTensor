@@ -239,12 +239,17 @@ xt::xtensor<float, 3> OlmoAttention::backward(const xt::xtensor<float, 3>& d_out
     // === Step 1: Output projection backward ===
     // d_attn_output = d_output @ W_O (gradient flows back through output projection)
     // dW_O += d_output^T @ attn_output
-    auto d_output_2d = xt::reshape_view(d_output, {batch_size * seq_len, d_model});
-    auto attn_output_2d = xt::reshape_view(m_act_attention_output, {batch_size * seq_len, d_model});
+    xt::xtensor<float, 2> d_output_2d = xt::reshape_view(d_output, {batch_size * seq_len, d_model});
+    xt::xtensor<float, 2> attn_output_2d = xt::reshape_view(m_act_attention_output, {batch_size * seq_len, d_model});
 
     if (m_oProj.grad.size() == 0)
         m_oProj.grad = xt::zeros_like(m_oProj.w);
-    m_oProj.grad += xt::linalg::dot(xt::transpose(d_output_2d), attn_output_2d);
+    // grad += d_output_2d^T @ attn_output_2d
+    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+        static_cast<int>(d_model), static_cast<int>(d_model), static_cast<int>(batch_size * seq_len),
+        1.0f, d_output_2d.data(), static_cast<int>(d_model),
+        attn_output_2d.data(), static_cast<int>(d_model),
+        1.0f, m_oProj.grad.data(), static_cast<int>(d_model));
 
     auto d_attn_output_2d = xt::linalg::dot(d_output_2d, m_oProj.w);
     auto d_attn_output = xt::reshape_view(d_attn_output_2d, {batch_size, seq_len, d_model});
@@ -323,18 +328,33 @@ xt::xtensor<float, 3> OlmoAttention::backward(const xt::xtensor<float, 3>& d_out
     xt::xtensor<float, 2> d_projected_ks_2d = xt::reshape_view(d_projected_ks, {batch_size * seq_len, d_model});
     xt::xtensor<float, 2> d_vs_2d = xt::reshape_view(d_vs, {batch_size * seq_len, d_model});
 
-    // Accumulate weight gradients
+    // Accumulate weight gradients using cblas_sgemm with beta=1
+    const int tokens = static_cast<int>(batch_size * seq_len);
+    const int dm = static_cast<int>(d_model);
+
     if (m_qProj.grad.size() == 0)
         m_qProj.grad = xt::zeros_like(m_qProj.w);
-    m_qProj.grad += xt::linalg::dot(xt::transpose(d_projected_qs_2d), m_act_input_2d);
+    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+        dm, dm, tokens,
+        1.0f, d_projected_qs_2d.data(), dm,
+        m_act_input_2d.data(), dm,
+        1.0f, m_qProj.grad.data(), dm);
 
     if (m_kProj.grad.size() == 0)
         m_kProj.grad = xt::zeros_like(m_kProj.w);
-    m_kProj.grad += xt::linalg::dot(xt::transpose(d_projected_ks_2d), m_act_input_2d);
+    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+        dm, dm, tokens,
+        1.0f, d_projected_ks_2d.data(), dm,
+        m_act_input_2d.data(), dm,
+        1.0f, m_kProj.grad.data(), dm);
 
     if (m_vProj.grad.size() == 0)
         m_vProj.grad = xt::zeros_like(m_vProj.w);
-    m_vProj.grad += xt::linalg::dot(xt::transpose(d_vs_2d), m_act_input_2d);
+    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+        dm, dm, tokens,
+        1.0f, d_vs_2d.data(), dm,
+        m_act_input_2d.data(), dm,
+        1.0f, m_vProj.grad.data(), dm);
 
     // Compute d_input from all three projections
     // d_input = d_Q @ W_Q + d_K @ W_K + d_V @ W_V

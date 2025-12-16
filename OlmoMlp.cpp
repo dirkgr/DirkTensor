@@ -63,14 +63,19 @@ xt::xtensor<float, 3> OlmoMlp::backward(const xt::xtensor<float, 3>& d_output) {
     const size_t d_model = d_output.shape(2);
     const size_t hidden_size = m_upProjection.shape(0);  // 8192
 
-    auto d_output_2d = xt::reshape_view(d_output, {batch_size * seq_len, d_model});
+    xt::xtensor<float, 2> d_output_2d = xt::reshape_view(d_output, {batch_size * seq_len, d_model});
 
     if (m_downProjection.grad.size() == 0)
         m_downProjection.grad = xt::zeros_like(m_downProjection.w);
-    m_downProjection.grad += xt::linalg::dot(
-        xt::transpose(d_output_2d), // (d_model, tokens)
-        m_act_activated_2d              // (tokens, hidden_size)
-    );
+    // grad += d_output_2d^T @ m_act_activated_2d
+    const int tokens = static_cast<int>(batch_size * seq_len);
+    const int dm = static_cast<int>(d_model);
+    const int hs = static_cast<int>(hidden_size);
+    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+        dm, hs, tokens,
+        1.0f, d_output_2d.data(), dm,
+        m_act_activated_2d.data(), hs,
+        1.0f, m_downProjection.grad.data(), hs);
 
     const auto d_activated_2d = xt::linalg::dot( // (tokens, hidden_size)
         d_output_2d,                           // (tokens, d_model)
@@ -113,17 +118,19 @@ xt::xtensor<float, 3> OlmoMlp::backward(const xt::xtensor<float, 3>& d_output) {
 
     if (m_gateProjection.grad.size() == 0)
         m_gateProjection.grad = xt::zeros_like(m_gateProjection.w);
-    m_gateProjection.grad += xt::linalg::dot(  // (hidden_size, d_model)
-        xt::transpose(d_gate),                 // (hidden_size, tokens)
-        m_act_input_2d                         // (tokens, d_model)
-    );
+    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+        hs, dm, tokens,
+        1.0f, d_gate.data(), hs,
+        m_act_input_2d.data(), dm,
+        1.0f, m_gateProjection.grad.data(), dm);
 
     if (m_upProjection.grad.size() == 0)
         m_upProjection.grad = xt::zeros_like(m_upProjection.w);
-    m_upProjection.grad += xt::linalg::dot( // (hidden_size, d_model)
-        xt::transpose(d_up),                // (hidden_size, tokens)
-        m_act_input_2d                      // (tokens, d_model)
-    );
+    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+        hs, dm, tokens,
+        1.0f, d_up.data(), hs,
+        m_act_input_2d.data(), dm,
+        1.0f, m_upProjection.grad.data(), dm);
 
     // Pre-allocate output as 3D tensor to avoid reshape copy at the end
     // d_input = d_gate @ W_gate + d_up @ W_up
