@@ -22,6 +22,8 @@ OlmoModel::OlmoModel(const std::string& folder) :
 }
 
 xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) {
+    m_batch = batch;  // Save for backward
+
     // Embedding
     xt::xtensor<float, 3> x = xt::empty<float>({
         batch.shape(0),
@@ -51,5 +53,14 @@ void OlmoModel::backward(const xt::xtensor<float, 3>& d_output) {
     for(int i = n_layers - 1; i >= 0; i--)
         grad = m_blocks[i]->backward(grad);
 
-    // TODO
+    // Embedding backward: accumulate gradients for each token
+    if (m_embeddings.grad.size() == 0)
+        m_embeddings.grad = xt::zeros_like(m_embeddings.w);
+
+    for (size_t b = 0; b < m_batch.shape(0); b++) {
+        for (size_t i = 0; i < m_batch.shape(1); i++) {
+            const auto token_id = m_batch(b, i);
+            xt::view(m_embeddings.grad, token_id) += xt::view(grad, b, i);
+        }
+    }
 }
