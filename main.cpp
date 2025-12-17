@@ -84,6 +84,13 @@ int main(int argc, char* argv[]) {
     loss_result.probs /= batch_size;
 
     model.backward(loss_result.probs);
+    model.step(1e-4f);
+    model.zero_grad();
+
+    // Second forward pass to see if loss decreased
+    logits = model.forward(batch);
+    loss_result = ce_loss(logits, batch, detokenizer.get_pad_token_id());
+    std::cout << loss_result.loss << std::endl;
 
     return 0;
 }

@@ -26,14 +26,73 @@ def read_tokens(file_path):
 
 
 def backward_hook(module, grad_input, grad_output):
-    """Backward hook - no-op for debugger attachment."""
+    """Backward hook - prints gradient info for specific modules."""
     pass  # Set breakpoint here to inspect grad_output
+
+
+def mlp_backward_hook(module, grad_input, grad_output):
+    """Print gradient entering MLP backward."""
+    if grad_output[0] is not None:
+        print(f"MLP backward d_output first 5 values: {grad_output[0][0, 0, :5].tolist()}")
+
+
+def lm_head_backward_hook(module, grad_input, grad_output):
+    """Print gradient entering and leaving LM head backward."""
+    if grad_output[0] is not None:
+        print(f"d_output entering backward first 5: {grad_output[0][0, 0, :5].tolist()}")
+    if grad_input[0] is not None:
+        print(f"grad after lm_head first 5: {grad_input[0][0, 0, :5].tolist()}")
+
+
+def norm_backward_hook(module, grad_input, grad_output):
+    """Print gradient leaving norm backward."""
+    if grad_input[0] is not None:
+        print(f"grad after norm first 5: {grad_input[0][0, 0, :5].tolist()}")
+
+
+def make_block_backward_hook(layer_idx):
+    """Create a backward hook for a specific block."""
+    def hook(module, grad_input, grad_output):
+        if grad_output[0] is not None:
+            print(f"Block {layer_idx} backward input first 5: {grad_output[0][0, 0, :5].tolist()}")
+        if grad_input[0] is not None:
+            print(f"Block {layer_idx} backward output first 5: {grad_input[0][0, 0, :5].tolist()}")
+    return hook
+
+
+def make_layer15_component_hook(name):
+    """Create hooks for layer 15 components."""
+    def hook(module, grad_input, grad_output):
+        if grad_output and len(grad_output) > 0 and grad_output[0] is not None:
+            print(f"  {name} grad_output first 5: {grad_output[0][0, 0, :5].tolist()}")
+        if grad_input and len(grad_input) > 0 and grad_input[0] is not None:
+            print(f"  {name} grad_input first 5: {grad_input[0][0, 0, :5].tolist()}")
+    return hook
 
 
 def register_backward_hooks(model):
     """Register pre-backward hooks on all modules for debugging."""
     for name, module in model.named_modules():
         module.register_full_backward_hook(backward_hook)
+        if name == "model.layers.0.mlp":
+            module.register_full_backward_hook(mlp_backward_hook)
+        if name == "lm_head":
+            module.register_full_backward_hook(lm_head_backward_hook)
+        if name == "model.norm":
+            module.register_full_backward_hook(norm_backward_hook)
+        # Register block hooks for layers 15, 14, 13
+        for i in [15, 14, 13, 1, 0]:
+            if name == f"model.layers.{i}":
+                module.register_full_backward_hook(make_block_backward_hook(i))
+        # Register hooks for layer 15 components
+        if name == "model.layers.15.post_feedforward_layernorm":
+            module.register_full_backward_hook(make_layer15_component_hook("postMlpNorm"))
+        if name == "model.layers.15.mlp":
+            module.register_full_backward_hook(make_layer15_component_hook("mlp"))
+        if name == "model.layers.15.post_attention_layernorm":
+            module.register_full_backward_hook(make_layer15_component_hook("postAttentionNorm"))
+        if name == "model.layers.15.self_attn":
+            module.register_full_backward_hook(make_layer15_component_hook("attention"))
 
 
 def print_gradient_slice(name, grad):
@@ -49,6 +108,24 @@ def print_gradient_slice(name, grad):
     sliced = grad[slices]
     print(sliced)
     print()
+
+
+def compute_loss(model, batch, pad_token_id):
+    """Forward pass and compute cross-entropy loss."""
+    outputs = model(batch)
+    logits = outputs.logits
+
+    # Shift logits and labels for next-token prediction
+    shift_logits = logits[:, :-1, :].contiguous()
+    shift_labels = batch[:, 1:].contiguous()
+
+    # Flatten for cross-entropy
+    loss = torch.nn.functional.cross_entropy(
+        shift_logits.view(-1, shift_logits.size(-1)),
+        shift_labels.view(-1),
+        ignore_index=pad_token_id,
+    )
+    return loss
 
 
 def main():
@@ -70,9 +147,6 @@ def main():
     for param in model.parameters():
         param.requires_grad_(True)
 
-    # Register pre-backward hooks for debugging
-    register_backward_hooks(model)
-
     # Read all token files
     all_tokens = []
     for file_path in file_paths:
@@ -87,37 +161,25 @@ def main():
     for i, tokens in enumerate(all_tokens):
         batch[i, :len(tokens)] = torch.tensor(tokens, dtype=torch.long)
 
-    # Forward pass (no torch.no_grad() so we can compute gradients)
-    outputs = model(batch)
-    logits = outputs.logits
-
-    # Print logits shape
-    print("Logits shape:", logits.shape)
-
-    # Compute loss for backward pass (cross-entropy with shifted labels)
-    # Shift logits and labels for next-token prediction
-    shift_logits = logits[:, :-1, :].contiguous()
-    shift_labels = batch[:, 1:].contiguous()
-
-    # Flatten for cross-entropy
-    loss = torch.nn.functional.cross_entropy(
-        shift_logits.view(-1, shift_logits.size(-1)),
-        shift_labels.view(-1),
-        ignore_index=pad_token_id,
-        )
-
-    print(f"Loss: {loss.item()}")
+    # First forward pass
+    loss = compute_loss(model, batch, pad_token_id)
+    print(loss.item())
 
     # Backward pass
     loss.backward()
 
-    # Print gradients for all model parameters
-    print("\n" + "="*80)
-    print("GRADIENTS")
-    print("="*80 + "\n")
+    # Optimizer step (SGD with lr=1e-4)
+    with torch.no_grad():
+        for param in model.parameters():
+            if param.grad is not None:
+                param -= 1e-4 * param.grad
 
-    for name, param in model.named_parameters():
-        print_gradient_slice(name, param.grad)
+    # Zero gradients
+    model.zero_grad()
+
+    # Second forward pass
+    loss = compute_loss(model, batch, pad_token_id)
+    print(loss.item())
 
 if __name__ == "__main__":
     main()

@@ -176,8 +176,14 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+add_test(
+    NAME test_backward
+    COMMAND ${Python3_EXECUTABLE} -m pytest ${CMAKE_SOURCE_DIR}/tests/test_backward.py -v -s
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
 # Set test properties to show output
-set_tests_properties(test_tokenize_text test_convert_checkpoint
+set_tests_properties(test_tokenize_text test_convert_checkpoint test_backward
     PROPERTIES
     ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
 )
