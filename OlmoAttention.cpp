@@ -14,22 +14,25 @@
 
 static constexpr float rope_theta = 500000;
 
-static constexpr auto rope_buffers() {
+static std::pair<xt::xtensor<float, 2>, xt::xtensor<float, 2>> compute_rope_buffers() {
     const auto inv_freq =
         1.0 / (xt::pow(rope_theta, xt::arange<double>(0, head_dim, 2) / head_dim));
     const auto seq = xt::arange<double>(0, max_seq_len);
     const auto freqs =
         xt::eval(xt::view(seq, xt::all(), xt::newaxis()) * xt::view(inv_freq, xt::newaxis(), xt::all()));
     const auto positions = xt::concatenate(std::tuple(freqs, freqs), 1);
-    const auto pos_sin = xt::sin(positions);
-    const auto pos_cos = xt::cos(positions);
 
-    const xt::xtensor<float, 2> pos_sin_f = xt::cast<float>(pos_sin);
-    const xt::xtensor<float, 2> pos_cos_f = xt::cast<float>(pos_cos);
+    xt::xtensor<float, 2> pos_sin_f = xt::cast<float>(xt::sin(positions));
+    xt::xtensor<float, 2> pos_cos_f = xt::cast<float>(xt::cos(positions));
 
-    return std::pair(pos_sin_f, pos_cos_f);
+    return std::pair(std::move(pos_sin_f), std::move(pos_cos_f));
     // rope buffers are (seq_len, head_dim)
 }
+
+// Compute rope buffers once at file scope
+static const auto g_rope_buffers = compute_rope_buffers();
+static const auto& g_rope_sin = g_rope_buffers.first;
+static const auto& g_rope_cos = g_rope_buffers.second;
 
 
 OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index) :
@@ -161,9 +164,6 @@ xt::xtensor<float, 4> OlmoAttention::apply_rope(const xt::xtensor<float, 4>& inp
     const auto batch_size = input.shape(0);
     const auto seq_len = input.shape(1);
 
-    static const auto [pos_sin, pos_cos] = rope_buffers();
-    // rope buffers are (seq_len, head_dim)
-
     // Pre-allocate output with explicit type
     xt::xtensor<float, 4> output = xt::zeros<float>({batch_size, seq_len, static_cast<size_t>(n_heads), static_cast<size_t>(head_dim)});
 
@@ -177,16 +177,16 @@ xt::xtensor<float, 4> OlmoAttention::apply_rope(const xt::xtensor<float, 4>& inp
 
                 // First half of output: input[first_half] * cos - input[second_half] * sin
                 for (size_t d = 0; d < half; ++d) {
-                    const float cos_val = pos_cos(position, d);
-                    const float sin_val = pos_sin(position, d);
+                    const float cos_val = g_rope_cos(position, d);
+                    const float sin_val = g_rope_sin(position, d);
                     output(b, position, h, d) =
                         input(b, position, h, d) * cos_val - input(b, position, h, d + half) * sin_val;
                 }
 
                 // Second half of output: input[second_half] * cos + input[first_half] * sin
                 for (size_t d = 0; d < half; ++d) {
-                    const float cos_val = pos_cos(position, d + half);
-                    const float sin_val = pos_sin(position, d + half);
+                    const float cos_val = g_rope_cos(position, d + half);
+                    const float sin_val = g_rope_sin(position, d + half);
                     output(b, position, h, d + half) =
                         input(b, position, h, d + half) * cos_val + input(b, position, h, d) * sin_val;
                 }
@@ -205,8 +205,6 @@ xt::xtensor<float, 4> OlmoAttention::apply_rope_backward(const xt::xtensor<float
     const auto batch_size = d_output.shape(0);
     const auto seq_len = d_output.shape(1);
 
-    static const auto [pos_sin, pos_cos] = rope_buffers();
-
     xt::xtensor<float, 4> d_input = xt::zeros<float>({batch_size, seq_len, static_cast<size_t>(n_heads), static_cast<size_t>(head_dim)});
 
     // Parallelize over batch and sequence positions
@@ -219,10 +217,10 @@ xt::xtensor<float, 4> OlmoAttention::apply_rope_backward(const xt::xtensor<float
                         const size_t half = head_dim / 2;
 
                         for (size_t d = 0; d < half; ++d) {
-                            const float cos_val_first = pos_cos(position, d);
-                            const float sin_val_first = pos_sin(position, d);
-                            const float cos_val_second = pos_cos(position, d + half);
-                            const float sin_val_second = pos_sin(position, d + half);
+                            const float cos_val_first = g_rope_cos(position, d);
+                            const float sin_val_first = g_rope_sin(position, d);
+                            const float cos_val_second = g_rope_cos(position, d + half);
+                            const float sin_val_second = g_rope_sin(position, d + half);
 
                             // d_in[0:h] = d_out[0:h] * cos[0:h] + d_out[h:] * sin[h:]
                             d_input(b, position, h, d) =
