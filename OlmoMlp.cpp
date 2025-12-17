@@ -61,12 +61,13 @@ xt::xtensor<float, 3> OlmoMlp::backward(const xt::xtensor<float, 3>& d_output) {
     const size_t batch_size = d_output.shape(0);
     const size_t seq_len = d_output.shape(1);
     const size_t d_model = d_output.shape(2);
-    const size_t hidden_size = m_upProjection.shape(0);  // 8192
+    const size_t hidden_size = m_upProjection.shape(0);
 
     xt::xtensor<float, 2> d_output_2d = xt::reshape_view(d_output, {batch_size * seq_len, d_model});
 
     if (m_downProjection.grad.size() == 0)
         m_downProjection.grad = xt::zeros_like(m_downProjection.w);
+
     // grad += d_output_2d^T @ m_act_activated_2d
     const int tokens = static_cast<int>(batch_size * seq_len);
     const int dm = static_cast<int>(d_model);
@@ -83,7 +84,6 @@ xt::xtensor<float, 3> OlmoMlp::backward(const xt::xtensor<float, 3>& d_output) {
     );
 
     // Compute d_up and d_gate element-wise in a single pass
-    // This avoids intermediate allocations and handles up=0 correctly
     xt::xtensor<float, 2> d_up = xt::empty<float>({batch_size * seq_len, hidden_size});
     xt::xtensor<float, 2> d_gate = xt::empty<float>({batch_size * seq_len, hidden_size});
 
@@ -99,25 +99,18 @@ xt::xtensor<float, 3> OlmoMlp::backward(const xt::xtensor<float, 3>& d_output) {
         const float up = up_ptr[i];
         const float gate = gate_ptr[i];
 
-        // sig = sigmoid(gate)
         const float sig = 1.0f / (1.0f + std::exp(-gate));
-        // silu(gate) = gate * sigmoid(gate)
         const float silu = gate * sig;
 
-        // d_up = d_activated * silu(gate)
-        // This is correct even when up=0 (avoids division by zero)
         d_up_ptr[i] = d_act * silu;
 
-        // d_silu = d_activated * up
         const float d_silu = d_act * up;
-
-        // d_gate = d_silu * sig * (1 + gate * (1 - sig))
-        // This is the derivative of silu: d(silu)/d(gate) = sig * (1 + gate * (1 - sig))
         d_gate_ptr[i] = d_silu * sig * (1.0f + gate * (1.0f - sig));
     }
 
     if (m_gateProjection.grad.size() == 0)
         m_gateProjection.grad = xt::zeros_like(m_gateProjection.w);
+
     cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
         hs, dm, tokens,
         1.0f, d_gate.data(), hs,
@@ -126,6 +119,7 @@ xt::xtensor<float, 3> OlmoMlp::backward(const xt::xtensor<float, 3>& d_output) {
 
     if (m_upProjection.grad.size() == 0)
         m_upProjection.grad = xt::zeros_like(m_upProjection.w);
+
     cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
         hs, dm, tokens,
         1.0f, d_up.data(), hs,
@@ -137,40 +131,24 @@ xt::xtensor<float, 3> OlmoMlp::backward(const xt::xtensor<float, 3>& d_output) {
     // Shapes: (tokens, hidden) @ (hidden, d_model) = (tokens, d_model)
     xt::xtensor<float, 3> d_input = xt::empty<float>({batch_size, seq_len, d_model});
 
-    const int M = static_cast<int>(batch_size * seq_len);  // tokens
+    const int M = static_cast<int>(batch_size * seq_len);
     const int N = static_cast<int>(d_model);
     const int K = static_cast<int>(hidden_size);
 
-    // d_input = d_gate @ W_gate (beta=0 overwrites d_input)
     cblas_sgemm(
-        CblasRowMajor,
-        CblasNoTrans,
-        CblasNoTrans,
+        CblasRowMajor, CblasNoTrans, CblasNoTrans,
         M, N, K,
-        1.0f,                           // alpha
-        d_gate.data(),                  // A: (M, K)
-        K,                              // lda: stride of A
-        m_gateProjection.w.data(),      // B: (K, N)
-        N,                              // ldb: stride of B
-        0.0f,                           // beta = 0: overwrite C
-        d_input.data(),                 // C: (M, N)
-        N                               // ldc: stride of C
+        1.0f, d_gate.data(), K,
+        m_gateProjection.w.data(), N,
+        0.0f, d_input.data(), N
     );
 
-    // d_input += d_up @ W_up (beta=1 accumulates into d_input)
     cblas_sgemm(
-        CblasRowMajor,
-        CblasNoTrans,
-        CblasNoTrans,
+        CblasRowMajor, CblasNoTrans, CblasNoTrans,
         M, N, K,
-        1.0f,                           // alpha
-        d_up.data(),                    // A: (M, K)
-        K,                              // lda: stride of A
-        m_upProjection.w.data(),        // B: (K, N)
-        N,                              // ldb: stride of B
-        1.0f,                           // beta = 1: C += result
-        d_input.data(),                 // C: (M, N)
-        N                               // ldc: stride of C
+        1.0f, d_up.data(), K,
+        m_upProjection.w.data(), N,
+        1.0f, d_input.data(), N
     );
 
     return d_input;
