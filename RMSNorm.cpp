@@ -9,6 +9,7 @@
 
 RMSNorm::RMSNorm(const std::string& filename) {
     m_weight.w = xt::load_npy<float>(filename);
+    m_weight.grad = xt::zeros_like(m_weight.w);
 }
 
 xt::xtensor<float, 3> RMSNorm::forward(const xt::xtensor<float, 3>& input) {

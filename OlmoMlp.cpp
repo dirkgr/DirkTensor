@@ -16,6 +16,11 @@ OlmoMlp::OlmoMlp(const std::string& folder, const unsigned int index) {
     m_downProjection.w =
         xt::load_npy<float>(
             std::format("{}/model.layers.{}.mlp.down_proj.weight.npy", folder, index));
+
+    // Pre-allocate gradients to avoid allocation during backward pass
+    m_upProjection.grad = xt::zeros_like(m_upProjection.w);
+    m_gateProjection.grad = xt::zeros_like(m_gateProjection.w);
+    m_downProjection.grad = xt::zeros_like(m_downProjection.w);
 }
 
 xt::xtensor<float, 3> OlmoMlp::forward(const xt::xtensor<float, 3>& input) {

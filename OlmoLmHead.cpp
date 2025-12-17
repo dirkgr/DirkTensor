@@ -5,6 +5,7 @@
 
 OlmoLmHead::OlmoLmHead(const std::string &filename) {
     m_lmHead.w = xt::load_npy<float>(filename);
+    m_lmHead.grad = xt::zeros_like(m_lmHead.w);
 }
 
 xt::xtensor<float, 3> OlmoLmHead::forward(const xt::xtensor<float, 3>& input) {

@@ -40,6 +40,12 @@ OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index
     m_kProj.w = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.k_proj.weight.npy", folder, index));
     m_vProj.w = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.v_proj.weight.npy", folder, index));
     m_oProj.w = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.o_proj.weight.npy", folder, index));
+
+    // Pre-allocate gradients to avoid allocation during backward pass
+    m_qProj.grad = xt::zeros_like(m_qProj.w);
+    m_kProj.grad = xt::zeros_like(m_kProj.w);
+    m_vProj.grad = xt::zeros_like(m_vProj.w);
+    m_oProj.grad = xt::zeros_like(m_oProj.w);
 }
 
 

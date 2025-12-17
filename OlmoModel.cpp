@@ -14,6 +14,7 @@ OlmoModel::OlmoModel(const std::string& folder) :
     m_lmHead(folder + "/lm_head.weight.npy")
 {
     m_embeddings.w = xt::load_npy<float>(folder + "/model.embed_tokens.weight.npy");
+    m_embeddings.grad = xt::zeros_like(m_embeddings.w);
     assert(m_embeddings.shape().size() == 2);
     assert(m_embeddings.shape(1) == d_model);
 
