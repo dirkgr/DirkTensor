@@ -8,11 +8,26 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+def find_cpp_binary():
+    """Find the DirkTensor binary in common build directories."""
+    candidates = [
+        'build/DirkTensor',  # CI build
+        'cmake-build-relwithdebinfo/DirkTensor',  # CLion RelWithDebInfo
+        'cmake-build-release/DirkTensor',  # CLion Release
+        'cmake-build-debug/DirkTensor',  # CLion Debug
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    raise FileNotFoundError(f"DirkTensor binary not found. Checked: {candidates}")
+
+
 def run_cpp(token_file):
     """Run C++ implementation and return (loss_before, loss_after, elapsed_seconds)."""
+    binary = find_cpp_binary()
     start = time.time()
     result = subprocess.run(
-        ['cmake-build-relwithdebinfo/DirkTensor', token_file],
+        [binary, token_file],
         capture_output=True,
         text=True,
         timeout=120
