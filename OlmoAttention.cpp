@@ -209,30 +209,36 @@ xt::xtensor<float, 4> OlmoAttention::apply_rope_backward(const xt::xtensor<float
 
     xt::xtensor<float, 4> d_input = xt::zeros<float>({batch_size, seq_len, static_cast<size_t>(n_heads), static_cast<size_t>(head_dim)});
 
-    for (size_t b = 0; b < batch_size; ++b) {
-        for (size_t position = 0; position < seq_len; ++position) {
-            for (size_t h = 0; h < n_heads; ++h) {
-                const size_t half = head_dim / 2;
+    // Parallelize over batch and sequence positions
+    tbb::parallel_for(
+        tbb::blocked_range2d<size_t>(0, batch_size, 0, seq_len),
+        [&](const tbb::blocked_range2d<size_t>& r) {
+            for (size_t b = r.rows().begin(); b != r.rows().end(); ++b) {
+                for (size_t position = r.cols().begin(); position != r.cols().end(); ++position) {
+                    for (size_t h = 0; h < n_heads; ++h) {
+                        const size_t half = head_dim / 2;
 
-                for (size_t d = 0; d < half; ++d) {
-                    const float cos_val_first = pos_cos(position, d);
-                    const float sin_val_first = pos_sin(position, d);
-                    const float cos_val_second = pos_cos(position, d + half);
-                    const float sin_val_second = pos_sin(position, d + half);
+                        for (size_t d = 0; d < half; ++d) {
+                            const float cos_val_first = pos_cos(position, d);
+                            const float sin_val_first = pos_sin(position, d);
+                            const float cos_val_second = pos_cos(position, d + half);
+                            const float sin_val_second = pos_sin(position, d + half);
 
-                    // d_in[0:h] = d_out[0:h] * cos[0:h] + d_out[h:] * sin[h:]
-                    d_input(b, position, h, d) =
-                        d_output(b, position, h, d) * cos_val_first +
-                        d_output(b, position, h, d + half) * sin_val_second;
+                            // d_in[0:h] = d_out[0:h] * cos[0:h] + d_out[h:] * sin[h:]
+                            d_input(b, position, h, d) =
+                                d_output(b, position, h, d) * cos_val_first +
+                                d_output(b, position, h, d + half) * sin_val_second;
 
-                    // d_in[h:] = -d_out[0:h] * sin[0:h] + d_out[h:] * cos[h:]
-                    d_input(b, position, h, d + half) =
-                        -d_output(b, position, h, d) * sin_val_first +
-                        d_output(b, position, h, d + half) * cos_val_second;
+                            // d_in[h:] = -d_out[0:h] * sin[0:h] + d_out[h:] * cos[h:]
+                            d_input(b, position, h, d + half) =
+                                -d_output(b, position, h, d) * sin_val_first +
+                                d_output(b, position, h, d + half) * cos_val_second;
+                        }
+                    }
                 }
             }
         }
-    }
+    );
     return d_input;
 }
 
@@ -271,51 +277,51 @@ xt::xtensor<float, 3> OlmoAttention::backward(const xt::xtensor<float, 3>& d_out
 
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
 
-    for (size_t b = 0; b < batch_size; ++b) {
-        for (size_t q_pos = 0; q_pos < seq_len; ++q_pos) {
-            for (size_t h = 0; h < n_heads; ++h) {
-                // For this query position, we have attention weights for all k_pos <= q_pos
-                // d_V[k_pos] += attention_weights[q_pos, k_pos] * d_weighted_v[q_pos]
-                // The gradient through softmax is more complex
+    // Parallelize over (batch, head) pairs - each pair can be computed independently
+    // d_qs_rope and d_ks_rope are accumulated per-position, so we parallelize over batch*head
+    tbb::parallel_for(
+        tbb::blocked_range2d<size_t>(0, batch_size, 0, n_heads),
+        [&](const tbb::blocked_range2d<size_t>& r) {
+            // Thread-local buffers to avoid repeated allocations
+            std::vector<float> d_weights(seq_len);
 
-                // First, compute the gradient of the weighted sum w.r.t. attention weights
-                // attn_output = sum_k(weights[k] * V[k])
-                // d_weights[k] = d_attn_output . V[k]  (dot product over head_dim)
+            for (size_t b = r.rows().begin(); b != r.rows().end(); ++b) {
+                for (size_t h = r.cols().begin(); h != r.cols().end(); ++h) {
+                    for (size_t q_pos = 0; q_pos < seq_len; ++q_pos) {
+                        // Compute d_weights (gradient w.r.t. attention weights before softmax backward)
+                        float dot_sum = 0.0f;
 
-                // Compute d_weights (gradient w.r.t. attention weights before softmax backward)
-                std::vector<float> d_weights(q_pos + 1, 0.0f);
-                float dot_sum = 0.0f;  // sum of (d_weights * weights) for softmax backward
+                        for (size_t k_pos = 0; k_pos <= q_pos; ++k_pos) {
+                            float dot = 0.0f;
+                            for (size_t d = 0; d < head_dim; ++d) {
+                                dot += d_weighted_v(b, q_pos, h, d) * m_act_vs(b, k_pos, h, d);
+                            }
+                            d_weights[k_pos] = dot;
+                            dot_sum += dot * m_act_attention_weights(b, h, q_pos, k_pos);
+                        }
 
-                for (size_t k_pos = 0; k_pos <= q_pos; ++k_pos) {
-                    float dot = 0.0f;
-                    for (size_t d = 0; d < head_dim; ++d) {
-                        dot += d_weighted_v(b, q_pos, h, d) * m_act_vs(b, k_pos, h, d);
-                    }
-                    d_weights[k_pos] = dot;
-                    dot_sum += dot * m_act_attention_weights(b, h, q_pos, k_pos);
-                }
+                        // Softmax backward: d_scores = weights * (d_weights - dot_sum)
+                        for (size_t k_pos = 0; k_pos <= q_pos; ++k_pos) {
+                            float weight = m_act_attention_weights(b, h, q_pos, k_pos);
+                            float d_score = weight * (d_weights[k_pos] - dot_sum);
 
-                // Softmax backward: d_scores = weights * (d_weights - dot_sum)
-                // scale is applied to d_Q and d_K, not to d_scores
-                for (size_t k_pos = 0; k_pos <= q_pos; ++k_pos) {
-                    float weight = m_act_attention_weights(b, h, q_pos, k_pos);
-                    float d_score = weight * (d_weights[k_pos] - dot_sum);
+                            // d_V[k_pos] += weights[q_pos, k_pos] * d_weighted_v[q_pos]
+                            for (size_t d = 0; d < head_dim; ++d) {
+                                d_vs(b, k_pos, h, d) += weight * d_weighted_v(b, q_pos, h, d);
+                            }
 
-                    // d_V[k_pos] += weights[q_pos, k_pos] * d_weighted_v[q_pos]
-                    for (size_t d = 0; d < head_dim; ++d) {
-                        d_vs(b, k_pos, h, d) += weight * d_weighted_v(b, q_pos, h, d);
-                    }
-
-                    // d_Q[q_pos] += d_score * K[k_pos] * scale
-                    // d_K[k_pos] += d_score * Q[q_pos] * scale
-                    for (size_t d = 0; d < head_dim; ++d) {
-                        d_qs_rope(b, q_pos, h, d) += d_score * m_act_ks_with_rope(b, k_pos, h, d) * scale;
-                        d_ks_rope(b, k_pos, h, d) += d_score * m_act_qs_with_rope(b, q_pos, h, d) * scale;
+                            // d_Q[q_pos] += d_score * K[k_pos] * scale
+                            // d_K[k_pos] += d_score * Q[q_pos] * scale
+                            for (size_t d = 0; d < head_dim; ++d) {
+                                d_qs_rope(b, q_pos, h, d) += d_score * m_act_ks_with_rope(b, k_pos, h, d) * scale;
+                                d_ks_rope(b, k_pos, h, d) += d_score * m_act_qs_with_rope(b, q_pos, h, d) * scale;
+                            }
+                        }
                     }
                 }
             }
         }
-    }
+    );
 
     // === Step 3: RoPE backward ===
     auto d_qs_normed = apply_rope_backward(d_qs_rope);
