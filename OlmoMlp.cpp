@@ -1,62 +1,172 @@
 #include "OlmoMlp.h"
 
 #include <format>
-#include <iostream>
 #include <xtensor/core/xmath.hpp>
+#include <xtensor/core/xnoalias.hpp>
 #include <xtensor/io/xnpy.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
 OlmoMlp::OlmoMlp(const std::string& folder, const unsigned int index) {
-    m_upProjection =
+    m_upProjection.w =
         xt::load_npy<float>(
             std::format("{}/model.layers.{}.mlp.up_proj.weight.npy", folder, index));
-    m_gateProjection =
+    m_gateProjection.w =
         xt::load_npy<float>(
             std::format("{}/model.layers.{}.mlp.gate_proj.weight.npy", folder, index));
-    m_downProjection =
+    m_downProjection.w =
         xt::load_npy<float>(
             std::format("{}/model.layers.{}.mlp.down_proj.weight.npy", folder, index));
+
+    // Pre-allocate gradients to avoid allocation during backward pass
+    m_upProjection.grad = xt::zeros_like(m_upProjection.w);
+    m_gateProjection.grad = xt::zeros_like(m_gateProjection.w);
+    m_downProjection.grad = xt::zeros_like(m_downProjection.w);
 }
 
 xt::xtensor<float, 3> OlmoMlp::forward(const xt::xtensor<float, 3>& input) {
-    // Optimize matrix multiplications by reshaping to 2D, using GEMM, then reshaping back
-    // This approach is more efficient than tensordot for batched operations
-
     const size_t batch_size = input.shape(0);
     const size_t seq_len = input.shape(1);
     const size_t d_model = input.shape(2);
     const size_t hidden_size = m_upProjection.shape(0);  // 8192
 
     // Reshape input from [batch, seq, d_model] to [batch*seq, d_model]
-    auto input_2d = xt::reshape_view(input, {batch_size * seq_len, d_model});
+    m_act_input_2d = xt::reshape_view(input, {batch_size * seq_len, d_model});
 
     // Perform matrix multiplications using direct BLAS GEMM via dot
     // Weights are stored as [hidden_size, d_model], so we need to transpose them
     // input_2d is [batch*seq, d_model], weights transposed become [d_model, hidden_size]
-    auto projected_2d = xt::linalg::dot(input_2d, xt::transpose(m_upProjection));
-    auto gate_2d = xt::linalg::dot(input_2d, xt::transpose(m_gateProjection));
+    m_act_up = xt::linalg::dot(m_act_input_2d, xt::transpose(m_upProjection.w));
+    m_act_gate = xt::linalg::dot(m_act_input_2d, xt::transpose(m_gateProjection.w));
 
     // Apply SiLU activation: gate * sigmoid(gate) * projected
     // Use scalar operations to avoid xtensor expression template overhead
-    xt::xtensor<float, 2> activated_2d = xt::zeros<float>({batch_size * seq_len, hidden_size});
-    const float* const gate_ptr = gate_2d.data();
-    const float* const proj_ptr = projected_2d.data();
-    float* const act_ptr = activated_2d.data();
+    m_act_activated_2d = xt::zeros<float>({batch_size * seq_len, hidden_size});
+    const float* const gate_ptr = m_act_gate.data();
+    const float* const up_ptr = m_act_up.data();
+    float* const act_ptr = m_act_activated_2d.data();
     const size_t total_elements = batch_size * seq_len * hidden_size;
     for (size_t i = 0; i < total_elements; ++i) {
         const float g = gate_ptr[i];
         const float silu = g / (1.0f + std::exp(-g));
-        act_ptr[i] = silu * proj_ptr[i];
+        act_ptr[i] = silu * up_ptr[i];
     }
 
     // Final projection back to d_model
     // m_downProjection is [d_model, hidden_size], so we need to transpose it
     // activated_2d is [batch*seq, hidden_size], transposed weight is [hidden_size, d_model]
-    auto result_2d = xt::linalg::dot(activated_2d, xt::transpose(m_downProjection));
+    auto output_2d = xt::linalg::dot(m_act_activated_2d, xt::transpose(m_downProjection.w));
 
     // Reshape back to 3D [batch, seq, d_model]
-    auto result = xt::reshape_view(result_2d, {batch_size, seq_len, d_model});
+    auto output = xt::reshape_view(output_2d, {batch_size, seq_len, d_model});
 
-    // Return a copy to ensure the result owns its memory
-    return xt::eval(result);
+    return output;
+}
+
+xt::xtensor<float, 3> OlmoMlp::backward(const xt::xtensor<float, 3>& d_output) {
+    const size_t batch_size = d_output.shape(0);
+    const size_t seq_len = d_output.shape(1);
+    const size_t d_model = d_output.shape(2);
+    const size_t hidden_size = m_upProjection.shape(0);
+
+    xt::xtensor<float, 2> d_output_2d = xt::reshape_view(d_output, {batch_size * seq_len, d_model});
+
+    if (m_downProjection.grad.size() == 0)
+        m_downProjection.grad = xt::zeros_like(m_downProjection.w);
+
+    // grad += d_output_2d^T @ m_act_activated_2d
+    const int tokens = static_cast<int>(batch_size * seq_len);
+    const int dm = static_cast<int>(d_model);
+    const int hs = static_cast<int>(hidden_size);
+    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+        dm, hs, tokens,
+        1.0f, d_output_2d.data(), dm,
+        m_act_activated_2d.data(), hs,
+        1.0f, m_downProjection.grad.data(), hs);
+
+    const auto d_activated_2d = xt::linalg::dot( // (tokens, hidden_size)
+        d_output_2d,                           // (tokens, d_model)
+        m_downProjection.w                     // (d_model, hidden_size)
+    );
+
+    // Compute d_up and d_gate element-wise in a single pass
+    xt::xtensor<float, 2> d_up = xt::empty<float>({batch_size * seq_len, hidden_size});
+    xt::xtensor<float, 2> d_gate = xt::empty<float>({batch_size * seq_len, hidden_size});
+
+    const float* const d_act_ptr = d_activated_2d.data();
+    const float* const up_ptr = m_act_up.data();
+    const float* const gate_ptr = m_act_gate.data();
+    float* const d_up_ptr = d_up.data();
+    float* const d_gate_ptr = d_gate.data();
+
+    const size_t total = batch_size * seq_len * hidden_size;
+    for (size_t i = 0; i < total; ++i) {
+        const float d_act = d_act_ptr[i];
+        const float up = up_ptr[i];
+        const float gate = gate_ptr[i];
+
+        const float sig = 1.0f / (1.0f + std::exp(-gate));
+        const float silu = gate * sig;
+
+        d_up_ptr[i] = d_act * silu;
+
+        const float d_silu = d_act * up;
+        d_gate_ptr[i] = d_silu * sig * (1.0f + gate * (1.0f - sig));
+    }
+
+    if (m_gateProjection.grad.size() == 0)
+        m_gateProjection.grad = xt::zeros_like(m_gateProjection.w);
+
+    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+        hs, dm, tokens,
+        1.0f, d_gate.data(), hs,
+        m_act_input_2d.data(), dm,
+        1.0f, m_gateProjection.grad.data(), dm);
+
+    if (m_upProjection.grad.size() == 0)
+        m_upProjection.grad = xt::zeros_like(m_upProjection.w);
+
+    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+        hs, dm, tokens,
+        1.0f, d_up.data(), hs,
+        m_act_input_2d.data(), dm,
+        1.0f, m_upProjection.grad.data(), dm);
+
+    // Pre-allocate output as 3D tensor to avoid reshape copy at the end
+    // d_input = d_gate @ W_gate + d_up @ W_up
+    // Shapes: (tokens, hidden) @ (hidden, d_model) = (tokens, d_model)
+    xt::xtensor<float, 3> d_input = xt::empty<float>({batch_size, seq_len, d_model});
+
+    const int M = static_cast<int>(batch_size * seq_len);
+    const int N = static_cast<int>(d_model);
+    const int K = static_cast<int>(hidden_size);
+
+    cblas_sgemm(
+        CblasRowMajor, CblasNoTrans, CblasNoTrans,
+        M, N, K,
+        1.0f, d_gate.data(), K,
+        m_gateProjection.w.data(), N,
+        0.0f, d_input.data(), N
+    );
+
+    cblas_sgemm(
+        CblasRowMajor, CblasNoTrans, CblasNoTrans,
+        M, N, K,
+        1.0f, d_up.data(), K,
+        m_upProjection.w.data(), N,
+        1.0f, d_input.data(), N
+    );
+
+    return d_input;
+}
+
+void OlmoMlp::step(float lr) {
+    m_upProjection.w -= lr * m_upProjection.grad;
+    m_gateProjection.w -= lr * m_gateProjection.grad;
+    m_downProjection.w -= lr * m_downProjection.grad;
+}
+
+void OlmoMlp::zero_grad() {
+    m_upProjection.grad.fill(0.0f);
+    m_gateProjection.grad.fill(0.0f);
+    m_downProjection.grad.fill(0.0f);
 }

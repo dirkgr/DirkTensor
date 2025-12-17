@@ -46,7 +46,11 @@
       "WebSearch",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:gist.github.com)",
-      "Bash(/Applications/CLion.app/Contents/bin/cmake/mac/x64/bin/ctest:*)"
+      "Bash(/Applications/CLion.app/Contents/bin/cmake/mac/x64/bin/ctest:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh run view:*)",
+      "Bash(python backward.py:*)"
     ],
     "deny": [],
     "ask": []

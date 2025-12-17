@@ -9,18 +9,22 @@
 
 #include "xtutil.h"
 
-OlmoModel::OlmoModel(const std::string& folder) : m_norm(folder + "/model.norm.weight.npy") {
-    m_embeddings = xt::load_npy<float>(folder + "/model.embed_tokens.weight.npy");
+OlmoModel::OlmoModel(const std::string& folder) :
+    m_norm(folder + "/model.norm.weight.npy"),
+    m_lmHead(folder + "/lm_head.weight.npy")
+{
+    m_embeddings.w = xt::load_npy<float>(folder + "/model.embed_tokens.weight.npy");
+    m_embeddings.grad = xt::zeros_like(m_embeddings.w);
     assert(m_embeddings.shape().size() == 2);
-    assert(m_embeddings.shape()[1] == d_model);
-
-    m_lmHead = xt::load_npy<float>(folder + "/lm_head.weight.npy");
+    assert(m_embeddings.shape(1) == d_model);
 
     for(size_t i = 0; i < n_layers; i++)
         m_blocks[i] = std::make_unique<OlmoBlock>(folder, i);
 }
 
-xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) const {
+xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) {
+    m_batch = batch;  // Save for backward
+
     // Embedding
     xt::xtensor<float, 3> x = xt::empty<float>({
         batch.shape(0),
@@ -29,7 +33,7 @@ xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) 
     });
     for (size_t b = 0; b < batch.shape(0); b++) {
         for (size_t i = 0; i < batch.shape(1); i++) {
-            xt::noalias(xt::view(x, b, i)) = xt::view(m_embeddings, batch(b, i));
+            xt::noalias(xt::view(x, b, i)) = xt::view(m_embeddings.w, batch(b, i));
         }
     }
 
@@ -38,21 +42,42 @@ xt::xtensor<float, 3> OlmoModel::forward(const xt::xtensor<uint32_t, 2>& batch) 
         x = m_blocks[i]->forward(x);
 
     // Norm
-    x = m_norm.forward(x);
+    const auto normed_x = m_norm.forward(x);
 
-    // LM Head - optimized with reshape + dot instead of tensordot
-    const size_t batch_size = x.shape(0);
-    const size_t seq_len = x.shape(1);
-    const size_t hidden_dim = x.shape(2);
-    const size_t vocab_size = m_lmHead.shape(0);
+    return m_lmHead.forward(normed_x);
+}
 
-    // Reshape from [batch, seq, d_model] to [batch*seq, d_model]
-    auto x_2d = xt::reshape_view(x, {batch_size * seq_len, hidden_dim});
+void OlmoModel::backward(const xt::xtensor<float, 3>& d_output) {
+    auto grad = m_lmHead.backward(d_output);
+    grad = m_norm.backward(grad);
 
-    // Matrix multiply: [batch*seq, d_model] @ [d_model, vocab_size] -> [batch*seq, vocab_size]
-    // m_lmHead is [vocab_size, d_model], so we need to transpose it
-    auto logits_2d = xt::linalg::dot(x_2d, xt::transpose(m_lmHead));
+    for(int i = n_layers - 1; i >= 0; i--)
+        grad = m_blocks[i]->backward(grad);
 
-    // Reshape back to [batch, seq, vocab_size]
-    return xt::eval(xt::reshape_view(logits_2d, {batch_size, seq_len, vocab_size}));
+    // Embedding backward: accumulate gradients for each token
+    if (m_embeddings.grad.size() == 0)
+        m_embeddings.grad = xt::zeros_like(m_embeddings.w);
+
+    for (size_t b = 0; b < m_batch.shape(0); b++) {
+        for (size_t i = 0; i < m_batch.shape(1); i++) {
+            const auto token_id = m_batch(b, i);
+            xt::view(m_embeddings.grad, token_id) += xt::view(grad, b, i);
+        }
+    }
+}
+
+void OlmoModel::step(float lr) {
+    m_embeddings.w -= lr * m_embeddings.grad;
+    for (size_t i = 0; i < n_layers; i++)
+        m_blocks[i]->step(lr);
+    m_norm.step(lr);
+    m_lmHead.step(lr);
+}
+
+void OlmoModel::zero_grad() {
+    m_embeddings.grad.fill(0.0f);
+    for (size_t i = 0; i < n_layers; i++)
+        m_blocks[i]->zero_grad();
+    m_norm.zero_grad();
+    m_lmHead.zero_grad();
 }

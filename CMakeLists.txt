@@ -58,6 +58,9 @@ FetchContent_Declare(
     GIT_TAG v2021.13.0
 )
 
+# Disable TBB tests - we only want to run our own tests
+set(TBB_TEST OFF CACHE BOOL "" FORCE)
+
 # Make the libraries available
 FetchContent_MakeAvailable(xtl xsimd xtensor xtensor-blas googletest TBB)
 
@@ -76,6 +79,9 @@ add_executable(DirkTensor
     OlmoBlock.h OlmoBlock.cpp
     OlmoModel.h OlmoModel.cpp
     Detokenizer.h Detokenizer.cpp
+    CrossEntropyLoss.h CrossEntropyLoss.cpp
+    param.h
+    OlmoLmHead.h OlmoLmHead.cpp
 )
 
 # Link xtensor (header-only library)
@@ -92,6 +98,18 @@ target_compile_options(DirkTensor PRIVATE
     $<$<CONFIG:Debug>:${OPTIMIZATION_FLAGS_DEBUG}>
 )
 
+add_executable(ArithmeticIntensityBench
+        arithmetic_intensity_bench.cpp
+)
+
+# Enable optimizations for release builds
+target_compile_options(ArithmeticIntensityBench PRIVATE
+        $<$<CONFIG:Release>:${OPTIMIZATION_FLAGS_RELEASE}>
+        $<$<CONFIG:RelWithDebInfo>:${OPTIMIZATION_FLAGS_RELWITHDEBINFO}>
+        $<$<CONFIG:Debug>:${OPTIMIZATION_FLAGS_DEBUG}>
+)
+
+
 # Test executable for OlmoModel
 add_executable(test_olmo_model
     test_olmo_model.cpp
@@ -102,6 +120,8 @@ add_executable(test_olmo_model
     OlmoBlock.h OlmoBlock.cpp
     OlmoModel.h OlmoModel.cpp
     Detokenizer.h Detokenizer.cpp
+    param.h
+    OlmoLmHead.h OlmoLmHead.cpp
 )
 
 target_link_libraries(test_olmo_model xtensor xtl xsimd xtensor-blas TBB::tbb ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} GTest::gtest GTest::gtest_main)
@@ -156,8 +176,14 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+add_test(
+    NAME test_backward
+    COMMAND ${Python3_EXECUTABLE} -m pytest ${CMAKE_SOURCE_DIR}/tests/test_backward.py -v -s
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
 # Set test properties to show output
-set_tests_properties(test_tokenize_text test_convert_checkpoint
+set_tests_properties(test_tokenize_text test_convert_checkpoint test_backward
     PROPERTIES
     ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
 )
