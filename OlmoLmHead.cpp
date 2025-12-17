@@ -60,3 +60,11 @@ xt::xtensor<float, 3> OlmoLmHead::backward(const xt::xtensor<float, 3>& grad) {
         m_lmHead.w);     // (vocab_size, d_model)
     return xt::reshape_view(reshaped_result, {batch_size, seq_len, d_model});
 }
+
+void OlmoLmHead::step(float lr) {
+    m_lmHead.w -= lr * m_lmHead.grad;
+}
+
+void OlmoLmHead::zero_grad() {
+    m_lmHead.grad.fill(0.0f);
+}

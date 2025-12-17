@@ -13,6 +13,8 @@ public:
 
     xt::xtensor<float, 3> forward(const xt::xtensor<float, 3>& input);
     xt::xtensor<float, 3> backward(const xt::xtensor<float, 3>& d_output);
+    void step(float lr);
+    void zero_grad();
 
 private:
     param<1> m_weight;

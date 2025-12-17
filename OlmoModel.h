@@ -17,6 +17,8 @@ public:
 
     xt::xtensor<float, 3> forward(const xt::xtensor<uint32_t, 2>& batch);
     void backward(const xt::xtensor<float, 3>& d_output);
+    void step(float lr);
+    void zero_grad();
 
 private:
     // parameters

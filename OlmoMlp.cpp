@@ -158,3 +158,15 @@ xt::xtensor<float, 3> OlmoMlp::backward(const xt::xtensor<float, 3>& d_output) {
 
     return d_input;
 }
+
+void OlmoMlp::step(float lr) {
+    m_upProjection.w -= lr * m_upProjection.grad;
+    m_gateProjection.w -= lr * m_gateProjection.grad;
+    m_downProjection.w -= lr * m_downProjection.grad;
+}
+
+void OlmoMlp::zero_grad() {
+    m_upProjection.grad.fill(0.0f);
+    m_gateProjection.grad.fill(0.0f);
+    m_downProjection.grad.fill(0.0f);
+}

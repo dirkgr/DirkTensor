@@ -402,3 +402,21 @@ xt::xtensor<float, 3> OlmoAttention::backward(const xt::xtensor<float, 3>& d_out
 
     return d_input;
 }
+
+void OlmoAttention::step(float lr) {
+    m_qProj.w -= lr * m_qProj.grad;
+    m_kProj.w -= lr * m_kProj.grad;
+    m_vProj.w -= lr * m_vProj.grad;
+    m_oProj.w -= lr * m_oProj.grad;
+    m_qNorm.step(lr);
+    m_kNorm.step(lr);
+}
+
+void OlmoAttention::zero_grad() {
+    m_qProj.grad.fill(0.0f);
+    m_kProj.grad.fill(0.0f);
+    m_vProj.grad.fill(0.0f);
+    m_oProj.grad.fill(0.0f);
+    m_qNorm.zero_grad();
+    m_kNorm.zero_grad();
+}

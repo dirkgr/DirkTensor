@@ -34,3 +34,11 @@ xt::xtensor<float, 3> RMSNorm::backward(const xt::xtensor<float, 3>& d_output) {
     const auto c_expanded = xt::view(c, xt::all(), xt::all(), xt::newaxis());
     return (m_weight.w * d_output - act_normed * c_expanded) / xt::view(m_act_rms, xt::all(), xt::all(), xt::newaxis());
 }
+
+void RMSNorm::step(float lr) {
+    m_weight.w -= lr * m_weight.grad;
+}
+
+void RMSNorm::zero_grad() {
+    m_weight.grad.fill(0.0f);
+}

@@ -65,3 +65,19 @@ void OlmoModel::backward(const xt::xtensor<float, 3>& d_output) {
         }
     }
 }
+
+void OlmoModel::step(float lr) {
+    m_embeddings.w -= lr * m_embeddings.grad;
+    for (size_t i = 0; i < n_layers; i++)
+        m_blocks[i]->step(lr);
+    m_norm.step(lr);
+    m_lmHead.step(lr);
+}
+
+void OlmoModel::zero_grad() {
+    m_embeddings.grad.fill(0.0f);
+    for (size_t i = 0; i < n_layers; i++)
+        m_blocks[i]->zero_grad();
+    m_norm.zero_grad();
+    m_lmHead.zero_grad();
+}

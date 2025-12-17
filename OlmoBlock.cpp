@@ -28,3 +28,17 @@ xt::xtensor<float, 3> OlmoBlock::backward(const xt::xtensor<float, 3>& d_output)
     grad = m_attention.backward(grad);
     return grad + d_h;
 }
+
+void OlmoBlock::step(float lr) {
+    m_attention.step(lr);
+    m_postAttentionNorm.step(lr);
+    m_mlp.step(lr);
+    m_postMlpNorm.step(lr);
+}
+
+void OlmoBlock::zero_grad() {
+    m_attention.zero_grad();
+    m_postAttentionNorm.zero_grad();
+    m_mlp.zero_grad();
+    m_postMlpNorm.zero_grad();
+}
