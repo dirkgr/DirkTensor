@@ -11,6 +11,7 @@
 
 #include "xtutil.h"
 #include "model_config.h"
+#include "FlashAttention.h"
 
 static constexpr float rope_theta = 500000;
 
@@ -86,69 +87,17 @@ xt::xtensor<float, 3> OlmoAttention::forward(const xt::xtensor<float, 3>& input)
     m_act_qs_with_rope = xt::eval(apply_rope(qs));
     m_act_ks_with_rope = xt::eval(apply_rope(ks));
 
-    // attend - parallelized with TBB
-    // Pre-allocate output tensor with proper dimensions
-    m_act_attention_output = xt::zeros<float>({batch_size, seq_len, d_model});
-    // Attention weights: (batch, n_heads, seq_q, seq_k) - causal, so only lower triangle is meaningful
-    m_act_attention_weights = xt::zeros<float>({static_cast<size_t>(batch_size), static_cast<size_t>(n_heads), static_cast<size_t>(seq_len), static_cast<size_t>(seq_len)});
-
+    // Flash attention: compute attention in cache-friendly blocks
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
 
-    tbb::parallel_for(
-        tbb::blocked_range2d<size_t>(0, batch_size, 0, seq_len),
-        [&](const tbb::blocked_range2d<size_t>& r) {
-            // Pre-allocate thread-local buffers to avoid repeated allocations
-            std::vector<float> logits_buffer(seq_len);
-            xt::xtensor<float, 1> output_buffer = xt::zeros<float>({static_cast<size_t>(n_heads * head_dim)});
+    // flash_attention_forward expects (batch, seq, heads, head_dim) and returns result with saved stats
+    auto attn_result = flash_attention_forward(m_act_qs_with_rope, m_act_ks_with_rope, m_act_vs, scale, true);
+    m_act_attention_output_4d = std::move(attn_result.output);
+    m_act_softmax_m = std::move(attn_result.softmax_m);
+    m_act_softmax_l = std::move(attn_result.softmax_l);
 
-            for (size_t b = r.rows().begin(); b != r.rows().end(); ++b) {
-                for (size_t position = r.cols().begin(); position != r.cols().end(); ++position) {
-                    // Clear output buffer
-                    std::fill(output_buffer.begin(), output_buffer.end(), 0.0f);
-
-                    // For each head, compute attention weights and accumulate
-                    for (size_t h = 0; h < n_heads; ++h) {
-                        // Compute logits for this head: q @ k^T / sqrt(head_dim)
-                        float max_logit = -std::numeric_limits<float>::infinity();
-
-                        // First pass: compute logits and find max for numerical stability
-                        for (size_t k_pos = 0; k_pos <= position; ++k_pos) {
-                            float dot = 0.0f;
-                            for (size_t d = 0; d < head_dim; ++d) {
-                                dot += m_act_qs_with_rope(b, position, h, d) * m_act_ks_with_rope(b, k_pos, h, d);
-                            }
-                            logits_buffer[k_pos] = dot * scale;
-                            max_logit = std::max(max_logit, logits_buffer[k_pos]);
-                        }
-
-                        // Second pass: compute softmax weights and store them
-                        float sum_exp = 0.0f;
-                        for (size_t k_pos = 0; k_pos <= position; ++k_pos) {
-                            float weight = std::exp(logits_buffer[k_pos] - max_logit);
-                            logits_buffer[k_pos] = weight;  // Reuse buffer for unnormalized weights
-                            sum_exp += weight;
-                        }
-
-                        // Normalize and store weights, compute weighted sum
-                        for (size_t k_pos = 0; k_pos <= position; ++k_pos) {
-                            float normalized_weight = logits_buffer[k_pos] / sum_exp;
-                            m_act_attention_weights(b, h, position, k_pos) = normalized_weight;
-
-                            // Accumulate weighted values
-                            for (size_t d = 0; d < head_dim; ++d) {
-                                output_buffer(h * head_dim + d) += normalized_weight * m_act_vs(b, k_pos, h, d);
-                            }
-                        }
-                    }
-
-                    // Copy to output
-                    for (size_t i = 0; i < n_heads * head_dim; ++i) {
-                        m_act_attention_output(b, position, i) = output_buffer(i);
-                    }
-                }
-            }
-        }
-    );
+    // Reshape to (batch, seq, d_model) for output projection
+    m_act_attention_output = xt::eval(xt::reshape_view(m_act_attention_output_4d, {batch_size, seq_len, d_model}));
 
     // Output projection using efficient BLAS
     auto output_2d = xt::reshape_view(m_act_attention_output, {batch_size * seq_len, d_model});
@@ -267,59 +216,20 @@ xt::xtensor<float, 3> OlmoAttention::backward(const xt::xtensor<float, 3>& d_out
     // Reshape to (batch, seq, n_heads, head_dim) for attention backward
     auto d_weighted_v = xt::reshape_view(d_attn_output, {batch_size, seq_len, static_cast<size_t>(n_heads), static_cast<size_t>(head_dim)});
 
-    // === Step 2: Attention backward ===
-    // d_V, d_Q_rope, d_K_rope from attention weights and gradients
-    xt::xtensor<float, 4> d_vs = xt::zeros<float>({batch_size, seq_len, static_cast<size_t>(n_heads), static_cast<size_t>(head_dim)});
-    xt::xtensor<float, 4> d_qs_rope = xt::zeros<float>({batch_size, seq_len, static_cast<size_t>(n_heads), static_cast<size_t>(head_dim)});
-    xt::xtensor<float, 4> d_ks_rope = xt::zeros<float>({batch_size, seq_len, static_cast<size_t>(n_heads), static_cast<size_t>(head_dim)});
-
+    // === Step 2: Attention backward using flash attention ===
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
 
-    // Parallelize over (batch, head) pairs - each pair can be computed independently
-    // d_qs_rope and d_ks_rope are accumulated per-position, so we parallelize over batch*head
-    tbb::parallel_for(
-        tbb::blocked_range2d<size_t>(0, batch_size, 0, n_heads),
-        [&](const tbb::blocked_range2d<size_t>& r) {
-            // Thread-local buffers to avoid repeated allocations
-            std::vector<float> d_weights(seq_len);
+    // Reshape d_weighted_v to 4D for flash attention backward
+    xt::xtensor<float, 4> d_weighted_v_4d = xt::eval(d_weighted_v);
 
-            for (size_t b = r.rows().begin(); b != r.rows().end(); ++b) {
-                for (size_t h = r.cols().begin(); h != r.cols().end(); ++h) {
-                    for (size_t q_pos = 0; q_pos < seq_len; ++q_pos) {
-                        // Compute d_weights (gradient w.r.t. attention weights before softmax backward)
-                        float dot_sum = 0.0f;
+    // Flash attention backward: uses saved softmax stats to compute gradients in single pass
+    auto attn_grads = flash_attention_backward(
+        d_weighted_v_4d, m_act_attention_output_4d, m_act_softmax_m, m_act_softmax_l,
+        m_act_qs_with_rope, m_act_ks_with_rope, m_act_vs, scale, true);
 
-                        for (size_t k_pos = 0; k_pos <= q_pos; ++k_pos) {
-                            float dot = 0.0f;
-                            for (size_t d = 0; d < head_dim; ++d) {
-                                dot += d_weighted_v(b, q_pos, h, d) * m_act_vs(b, k_pos, h, d);
-                            }
-                            d_weights[k_pos] = dot;
-                            dot_sum += dot * m_act_attention_weights(b, h, q_pos, k_pos);
-                        }
-
-                        // Softmax backward: d_scores = weights * (d_weights - dot_sum)
-                        for (size_t k_pos = 0; k_pos <= q_pos; ++k_pos) {
-                            float weight = m_act_attention_weights(b, h, q_pos, k_pos);
-                            float d_score = weight * (d_weights[k_pos] - dot_sum);
-
-                            // d_V[k_pos] += weights[q_pos, k_pos] * d_weighted_v[q_pos]
-                            for (size_t d = 0; d < head_dim; ++d) {
-                                d_vs(b, k_pos, h, d) += weight * d_weighted_v(b, q_pos, h, d);
-                            }
-
-                            // d_Q[q_pos] += d_score * K[k_pos] * scale
-                            // d_K[k_pos] += d_score * Q[q_pos] * scale
-                            for (size_t d = 0; d < head_dim; ++d) {
-                                d_qs_rope(b, q_pos, h, d) += d_score * m_act_ks_with_rope(b, k_pos, h, d) * scale;
-                                d_ks_rope(b, k_pos, h, d) += d_score * m_act_qs_with_rope(b, q_pos, h, d) * scale;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    );
+    xt::xtensor<float, 4> d_vs = std::move(attn_grads.d_V);
+    xt::xtensor<float, 4> d_qs_rope = std::move(attn_grads.d_Q);
+    xt::xtensor<float, 4> d_ks_rope = std::move(attn_grads.d_K);
 
     // === Step 3: RoPE backward ===
     auto d_qs_normed = apply_rope_backward(d_qs_rope);

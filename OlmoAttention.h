@@ -31,7 +31,10 @@ private:
     xt::xtensor<float, 4> m_act_qs_with_rope;       // (batch, seq, n_heads, head_dim)
     xt::xtensor<float, 4> m_act_ks_with_rope;       // (batch, seq, n_heads, head_dim)
     xt::xtensor<float, 4> m_act_vs;                 // (batch, seq, n_heads, head_dim)
-    xt::xtensor<float, 4> m_act_attention_weights;  // (batch, n_heads, seq, seq) - softmax output
+    // Saved from flash attention forward for backward pass
+    xt::xtensor<float, 4> m_act_attention_output_4d;   // (batch, seq, n_heads, head_dim) - for backward D computation
+    xt::xtensor<float, 3> m_act_softmax_m;             // (batch, seq, n_heads) - softmax max values
+    xt::xtensor<float, 3> m_act_softmax_l;             // (batch, seq, n_heads) - softmax sum-of-exp values
     xt::xtensor<float, 3> m_act_attention_output;   // (batch, seq, d_model)
 
     static xt::xtensor<float, 4> apply_rope(const xt::xtensor<float, 4>& input);

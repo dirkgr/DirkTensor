@@ -76,6 +76,7 @@ add_executable(DirkTensor
     RMSNorm.h RMSNorm.cpp
     OlmoMlp.h OlmoMlp.cpp
     OlmoAttention.h OlmoAttention.cpp
+    FlashAttention.h FlashAttention.cpp
     OlmoBlock.h OlmoBlock.cpp
     OlmoModel.h OlmoModel.cpp
     Detokenizer.h Detokenizer.cpp
@@ -117,6 +118,7 @@ add_executable(test_olmo_model
     RMSNorm.h RMSNorm.cpp
     OlmoMlp.h OlmoMlp.cpp
     OlmoAttention.h OlmoAttention.cpp
+    FlashAttention.h FlashAttention.cpp
     OlmoBlock.h OlmoBlock.cpp
     OlmoModel.h OlmoModel.cpp
     Detokenizer.h Detokenizer.cpp
