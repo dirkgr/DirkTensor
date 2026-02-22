@@ -1,4 +1,1 @@
-pytest>=7.0.0
-numpy>=1.20.0
 transformers @ git+https://github.com/huggingface/transformers.git@refs/pull/43358/head
-torch>=1.9.0
