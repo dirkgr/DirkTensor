@@ -1,1 +1,2 @@
 transformers @ git+https://github.com/huggingface/transformers.git@refs/pull/43358/head
+torch
