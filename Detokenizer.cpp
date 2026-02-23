@@ -4,6 +4,8 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "cached_path.h"
+
 static std::string unescape_string(const std::string& s) {
     std::string result;
     result.reserve(s.size());
@@ -39,7 +41,7 @@ static std::string unescape_string(const std::string& s) {
 }
 
 Detokenizer::Detokenizer(const std::string& vocab_file) : m_padTokenId(0) {
-    std::ifstream file(vocab_file);
+    std::ifstream file(cached_path(vocab_file));
     if (!file) {
         throw std::runtime_error("Cannot open vocabulary file: " + vocab_file);
     }

@@ -13,6 +13,7 @@ enable_testing()
 
 find_package(BLAS REQUIRED)
 find_package(LAPACK REQUIRED)
+find_package(CURL REQUIRED)
 
 # Detect which BLAS implementation was found and set appropriate compile definitions
 if(BLAS_LIBRARIES MATCHES "Accelerate" OR BLAS_Accelerate_LIBRARY)
@@ -57,12 +58,17 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/oneapi-src/oneTBB.git
     GIT_TAG v2021.13.0
 )
+FetchContent_Declare(
+    PicoSHA2
+    GIT_REPOSITORY https://github.com/okdshin/PicoSHA2.git
+    GIT_TAG v1.0.1
+)
 
 # Disable TBB tests - we only want to run our own tests
 set(TBB_TEST OFF CACHE BOOL "" FORCE)
 
 # Make the libraries available
-FetchContent_MakeAvailable(xtl xsimd xtensor xtensor-blas googletest TBB)
+FetchContent_MakeAvailable(xtl xsimd xtensor xtensor-blas googletest TBB PicoSHA2)
 
 # Define optimization flags once for consistency across all targets
 set(OPTIMIZATION_FLAGS_RELEASE -O3 -march=native -ffast-math -fno-finite-math-only -DNDEBUG)
@@ -83,10 +89,12 @@ add_executable(DirkTensor
     CrossEntropyLoss.h CrossEntropyLoss.cpp
     param.h
     OlmoLmHead.h OlmoLmHead.cpp
+    cached_path.h cached_path.cpp
 )
 
 # Link xtensor (header-only library)
-target_link_libraries(DirkTensor xtensor xtl xsimd xtensor-blas TBB::tbb ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+target_link_libraries(DirkTensor xtensor xtl xsimd xtensor-blas TBB::tbb ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} CURL::libcurl)
+target_include_directories(DirkTensor PRIVATE ${picosha2_SOURCE_DIR})
 
 # Enable xsimd for xtensor
 target_compile_definitions(DirkTensor PRIVATE XTENSOR_USE_XSIMD)
@@ -124,9 +132,11 @@ add_executable(test_olmo_model
     Detokenizer.h Detokenizer.cpp
     param.h
     OlmoLmHead.h OlmoLmHead.cpp
+    cached_path.h cached_path.cpp
 )
 
-target_link_libraries(test_olmo_model xtensor xtl xsimd xtensor-blas TBB::tbb ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} GTest::gtest GTest::gtest_main)
+target_link_libraries(test_olmo_model xtensor xtl xsimd xtensor-blas TBB::tbb ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} GTest::gtest GTest::gtest_main CURL::libcurl)
+target_include_directories(test_olmo_model PRIVATE ${picosha2_SOURCE_DIR})
 target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_XSIMD)
 target_compile_definitions(test_olmo_model PRIVATE XTENSOR_USE_TBB)
 target_compile_options(test_olmo_model PRIVATE
@@ -139,10 +149,26 @@ target_compile_options(test_olmo_model PRIVATE
 add_executable(test_detokenizer
     test_detokenizer.cpp
     Detokenizer.h Detokenizer.cpp
+    cached_path.h cached_path.cpp
 )
 
-target_link_libraries(test_detokenizer GTest::gtest GTest::gtest_main)
+target_link_libraries(test_detokenizer GTest::gtest GTest::gtest_main CURL::libcurl)
+target_include_directories(test_detokenizer PRIVATE ${picosha2_SOURCE_DIR})
 target_compile_options(test_detokenizer PRIVATE
+    $<$<CONFIG:Release>:${OPTIMIZATION_FLAGS_RELEASE}>
+    $<$<CONFIG:RelWithDebInfo>:${OPTIMIZATION_FLAGS_RELWITHDEBINFO}>
+    $<$<CONFIG:Debug>:${OPTIMIZATION_FLAGS_DEBUG}>
+)
+
+# Test executable for cached_path
+add_executable(test_cached_path
+    test_cached_path.cpp
+    cached_path.h cached_path.cpp
+)
+
+target_link_libraries(test_cached_path GTest::gtest GTest::gtest_main CURL::libcurl)
+target_include_directories(test_cached_path PRIVATE ${picosha2_SOURCE_DIR})
+target_compile_options(test_cached_path PRIVATE
     $<$<CONFIG:Release>:${OPTIMIZATION_FLAGS_RELEASE}>
     $<$<CONFIG:RelWithDebInfo>:${OPTIMIZATION_FLAGS_RELWITHDEBINFO}>
     $<$<CONFIG:Debug>:${OPTIMIZATION_FLAGS_DEBUG}>
@@ -162,6 +188,13 @@ add_test(
 add_test(
     NAME test_detokenizer
     COMMAND test_detokenizer
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+# Add C++ test for cached_path
+add_test(
+    NAME test_cached_path
+    COMMAND test_cached_path
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
