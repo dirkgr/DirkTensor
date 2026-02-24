@@ -13,7 +13,7 @@ class OlmoModelTest : public ::testing::Test {
 protected:
     static void SetUpTestSuite() {
         // Load model once for all tests
-        g_model = new OlmoModel("models/OLMo-2-0425-1B");
+        g_model = new OlmoModel("https://dirktensor.mechanicaldirk.com/OLMo-2-0425-1B");
     }
 
     static void TearDownTestSuite() {
