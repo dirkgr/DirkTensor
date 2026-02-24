@@ -32,7 +32,7 @@ jobs:
       - name: Install C++ dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build libopenblas-dev liblapack-dev
+          sudo apt-get install -y cmake ninja-build libopenblas-dev liblapack-dev libcurl4-openssl-dev
 
       - name: Configure CMake
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DPython3_EXECUTABLE=$(which python3)
