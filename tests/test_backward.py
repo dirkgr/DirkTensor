@@ -22,35 +22,37 @@ def find_cpp_binary():
     raise FileNotFoundError(f"DirkTensor binary not found. Checked: {candidates}")
 
 
-def run_cpp(token_file):
-    """Run C++ implementation and return (loss_before, loss_after, elapsed_seconds)."""
-    binary = find_cpp_binary()
-    start = time.time()
-    result = subprocess.run(
-        [binary, token_file],
-        capture_output=True,
-        text=True,
-        timeout=120
-    )
-    elapsed = time.time() - start
-    assert result.returncode == 0, f"C++ failed: {result.stderr}"
+def _parse_result(result, label):
+    assert result.returncode == 0, f"{label} failed: {result.stderr}"
     lines = result.stdout.strip().split('\n')
-    return float(lines[0]), float(lines[1]), elapsed
+    return float(lines[0]), float(lines[1])
+
+
+def run_cpp(token_file):
+    """Run C++ implementation twice; return results from second run to avoid measuring model download."""
+    binary = find_cpp_binary()
+    # Warm up: downloads and caches the model
+    warm = subprocess.run([binary, token_file], capture_output=True, text=True, timeout=600)
+    assert warm.returncode == 0, f"C++ warmup failed: {warm.stderr}"
+    # Timed run
+    start = time.time()
+    result = subprocess.run([binary, token_file], capture_output=True, text=True, timeout=120)
+    elapsed = time.time() - start
+    before, after = _parse_result(result, "C++")
+    return before, after, elapsed
 
 
 def run_python(token_file):
-    """Run Python implementation and return (loss_before, loss_after, elapsed_seconds)."""
+    """Run Python implementation twice; return results from second run to avoid measuring model download."""
+    # Warm up: downloads and caches the model
+    warm = subprocess.run(['python3', 'backward.py', token_file], capture_output=True, text=True, timeout=600)
+    assert warm.returncode == 0, f"Python warmup failed: {warm.stderr}"
+    # Timed run
     start = time.time()
-    result = subprocess.run(
-        ['python3', 'backward.py', token_file],
-        capture_output=True,
-        text=True,
-        timeout=180
-    )
+    result = subprocess.run(['python3', 'backward.py', token_file], capture_output=True, text=True, timeout=180)
     elapsed = time.time() - start
-    assert result.returncode == 0, f"Python failed: {result.stderr}"
-    lines = result.stdout.strip().split('\n')
-    return float(lines[0]), float(lines[1]), elapsed
+    before, after = _parse_result(result, "Python")
+    return before, after, elapsed
 
 
 @pytest.mark.parametrize("token_file", [
