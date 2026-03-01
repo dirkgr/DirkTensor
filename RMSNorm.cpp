@@ -5,10 +5,11 @@
 #include <xtensor/io/xnpy.hpp>
 #include <xtensor/views/xview.hpp>
 
+#include "cached_path.h"
 #include "xtutil.h"
 
 RMSNorm::RMSNorm(const std::string& filename) {
-    m_weight.w = xt::load_npy<float>(filename);
+    m_weight.w = xt::load_npy<float>(cached_path(filename));
     m_weight.grad = xt::zeros_like(m_weight.w);
 }
 

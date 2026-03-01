@@ -6,16 +6,18 @@
 #include <xtensor/io/xnpy.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
+#include "cached_path.h"
+
 OlmoMlp::OlmoMlp(const std::string& folder, const unsigned int index) {
     m_upProjection.w =
-        xt::load_npy<float>(
-            std::format("{}/model.layers.{}.mlp.up_proj.weight.npy", folder, index));
+        xt::load_npy<float>(cached_path(
+            std::format("{}/model.layers.{}.mlp.up_proj.weight.npy", folder, index)));
     m_gateProjection.w =
-        xt::load_npy<float>(
-            std::format("{}/model.layers.{}.mlp.gate_proj.weight.npy", folder, index));
+        xt::load_npy<float>(cached_path(
+            std::format("{}/model.layers.{}.mlp.gate_proj.weight.npy", folder, index)));
     m_downProjection.w =
-        xt::load_npy<float>(
-            std::format("{}/model.layers.{}.mlp.down_proj.weight.npy", folder, index));
+        xt::load_npy<float>(cached_path(
+            std::format("{}/model.layers.{}.mlp.down_proj.weight.npy", folder, index)));
 
     // Pre-allocate gradients to avoid allocation during backward pass
     m_upProjection.grad = xt::zeros_like(m_upProjection.w);

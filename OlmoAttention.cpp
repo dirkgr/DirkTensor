@@ -11,6 +11,7 @@
 
 #include "xtutil.h"
 #include "model_config.h"
+#include "cached_path.h"
 #include "FlashAttention.h"
 
 static constexpr float rope_theta = 500000;
@@ -40,10 +41,10 @@ OlmoAttention::OlmoAttention(const std::string& folder, const unsigned int index
     m_qNorm(std::format("{}/model.layers.{}.self_attn.q_norm.weight.npy", folder, index)),
     m_kNorm(std::format("{}/model.layers.{}.self_attn.k_norm.weight.npy", folder, index))
 {
-    m_qProj.w = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.q_proj.weight.npy", folder, index));
-    m_kProj.w = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.k_proj.weight.npy", folder, index));
-    m_vProj.w = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.v_proj.weight.npy", folder, index));
-    m_oProj.w = xt::load_npy<float>(std::format("{}/model.layers.{}.self_attn.o_proj.weight.npy", folder, index));
+    m_qProj.w = xt::load_npy<float>(cached_path(std::format("{}/model.layers.{}.self_attn.q_proj.weight.npy", folder, index)));
+    m_kProj.w = xt::load_npy<float>(cached_path(std::format("{}/model.layers.{}.self_attn.k_proj.weight.npy", folder, index)));
+    m_vProj.w = xt::load_npy<float>(cached_path(std::format("{}/model.layers.{}.self_attn.v_proj.weight.npy", folder, index)));
+    m_oProj.w = xt::load_npy<float>(cached_path(std::format("{}/model.layers.{}.self_attn.o_proj.weight.npy", folder, index)));
 
     // Pre-allocate gradients to avoid allocation during backward pass
     m_qProj.grad = xt::zeros_like(m_qProj.w);
