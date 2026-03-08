@@ -31,7 +31,7 @@ jobs:
         shell: bash -el {0}
         run: |
           conda install -y cmake ninja openblas libcurl
-          pip install pytest transformers numpy torch --extra-index-url https://download.pytorch.org/whl/cpu
+          pip install pytest pytest-rerunfailures transformers numpy torch --extra-index-url https://download.pytorch.org/whl/cpu
 
       - name: Configure CMake
         shell: bash -el {0}

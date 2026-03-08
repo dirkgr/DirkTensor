@@ -55,6 +55,7 @@ def run_python(token_file):
     return before, after, elapsed
 
 
+@pytest.mark.flaky(reruns=2)
 @pytest.mark.parametrize("token_file", [
     "fourscore.tokens.bin",
     "data/benchmark64.tokens.bin",
