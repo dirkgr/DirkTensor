@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies
         shell: bash -el {0}
         run: |
-          conda install -y cmake ninja openblas libcurl
+          conda install -y cmake ninja mkl-devel libcurl
           pip install pytest pytest-rerunfailures transformers numpy torch --extra-index-url https://download.pytorch.org/whl/cpu
 
       - name: Configure CMake
