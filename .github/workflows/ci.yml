@@ -35,7 +35,7 @@ jobs:
 
       - name: Configure CMake
         shell: bash -el {0}
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$CONDA_PREFIX -DPython3_EXECUTABLE=$(which python3)
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$CONDA_PREFIX -DCMAKE_INCLUDE_PATH=$CONDA_PREFIX/include -DPython3_EXECUTABLE=$(which python3)
 
       - name: Build
         shell: bash -el {0}
