@@ -15,6 +15,16 @@ find_package(BLAS REQUIRED)
 find_package(LAPACK REQUIRED)
 find_package(CURL REQUIRED)
 
+# Find BLAS include directory (cblas.h) by looking next to the BLAS library
+list(GET BLAS_LIBRARIES 0 _blas_lib)
+get_filename_component(_blas_lib_dir "${_blas_lib}" DIRECTORY)
+get_filename_component(_blas_prefix "${_blas_lib_dir}" DIRECTORY)
+find_path(BLAS_INCLUDE_DIR cblas.h HINTS "${_blas_prefix}/include")
+if(BLAS_INCLUDE_DIR)
+    message(STATUS "Found BLAS headers: ${BLAS_INCLUDE_DIR}")
+    include_directories(${BLAS_INCLUDE_DIR})
+endif()
+
 # Detect which BLAS implementation was found and set appropriate compile definitions
 if(BLAS_LIBRARIES MATCHES "Accelerate" OR BLAS_Accelerate_LIBRARY)
     message(STATUS "Using Apple Accelerate framework for BLAS")
