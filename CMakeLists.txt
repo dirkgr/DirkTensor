@@ -16,10 +16,13 @@ find_package(LAPACK REQUIRED)
 find_package(CURL REQUIRED)
 
 # Add BLAS include directories (cblas.h) by looking next to the BLAS libraries
+message(STATUS "BLAS_LIBRARIES: ${BLAS_LIBRARIES}")
 foreach(_lib IN LISTS BLAS_LIBRARIES)
+    message(STATUS "  Checking BLAS lib: ${_lib}")
     if(_lib MATCHES "^/")
         get_filename_component(_lib_dir "${_lib}" DIRECTORY)
         get_filename_component(_prefix "${_lib_dir}" DIRECTORY)
+        message(STATUS "  Looking for: ${_prefix}/include/cblas.h")
         if(EXISTS "${_prefix}/include/cblas.h")
             message(STATUS "Found BLAS headers: ${_prefix}/include")
             include_directories("${_prefix}/include")
