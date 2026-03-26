@@ -57,8 +57,8 @@ def run_python(token_file):
 
 @pytest.mark.flaky(reruns=2)
 @pytest.mark.parametrize("token_file", [
-    "fourscore.tokens.bin",
     "data/benchmark64.tokens.bin",
+    "fourscore.tokens.bin",
 ])
 def test_backward_matches_python(token_file):
     """Test that C++ and Python produce matching loss values, and C++ is faster."""
