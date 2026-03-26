@@ -55,15 +55,30 @@ def run_python(token_file):
     return before, after, elapsed
 
 
+_warmed_up = False
+
+def global_warmup():
+    """Run both C++ and Python once to warm OS-level caches (page cache, shared libs)."""
+    global _warmed_up
+    if _warmed_up:
+        return
+    binary = find_cpp_binary()
+    subprocess.run([binary, "fourscore.tokens.bin"], capture_output=True, text=True, timeout=600)
+    subprocess.run(["python3", "backward.py", "fourscore.tokens.bin"], capture_output=True, text=True, timeout=600)
+    _warmed_up = True
+
+
 @pytest.mark.flaky(reruns=2)
 @pytest.mark.parametrize("token_file", [
-    "data/benchmark64.tokens.bin",
     "fourscore.tokens.bin",
+    "data/benchmark64.tokens.bin",
 ])
 def test_backward_matches_python(token_file):
     """Test that C++ and Python produce matching loss values, and C++ is faster."""
     if not os.path.exists(token_file):
         pytest.skip(f"Token file {token_file} not found")
+
+    global_warmup()
 
     cpp_before, cpp_after, cpp_time = run_cpp(token_file)
     py_before, py_after, py_time = run_python(token_file)
