@@ -3,8 +3,10 @@
 #include <xtensor/io/xnpy.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
+#include "cached_path.h"
+
 OlmoLmHead::OlmoLmHead(const std::string &filename) {
-    m_lmHead.w = xt::load_npy<float>(filename);
+    m_lmHead.w = xt::load_npy<float>(cached_path(filename));
     m_lmHead.grad = xt::zeros_like(m_lmHead.w);
 }
 
