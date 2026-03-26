@@ -33,17 +33,9 @@ jobs:
           conda install -y cmake ninja mkl-devel libcurl
           pip install pytest pytest-rerunfailures transformers numpy torch --extra-index-url https://download.pytorch.org/whl/cpu
 
-      - name: Find BLAS headers
-        shell: bash -el {0}
-        run: |
-          echo "CONDA_PREFIX=$CONDA_PREFIX"
-          find $CONDA_PREFIX -name "cblas.h" 2>/dev/null || echo "cblas.h not found in conda"
-          conda list | grep -i mkl
-          ls $CONDA_PREFIX/include/ | head -20
-
       - name: Configure CMake
         shell: bash -el {0}
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$CONDA_PREFIX -DCMAKE_INCLUDE_PATH=$CONDA_PREFIX/include -DCMAKE_C_FLAGS="-I$CONDA_PREFIX/include" -DCMAKE_CXX_FLAGS="-I$CONDA_PREFIX/include" -DPython3_EXECUTABLE=$(which python3)
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$CONDA_PREFIX -DCMAKE_INCLUDE_PATH=$CONDA_PREFIX/include -DPython3_EXECUTABLE=$(which python3)
 
       - name: Build
         shell: bash -el {0}

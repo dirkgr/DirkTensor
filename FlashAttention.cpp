@@ -9,7 +9,9 @@
 
 #ifdef WITH_VECLIB
 #include <Accelerate/Accelerate.h>
-#elif defined(WITH_OPENBLAS) || defined(WITH_MKLBLAS)
+#elif defined(WITH_MKLBLAS)
+#include <mkl_cblas.h>
+#elif defined(WITH_OPENBLAS)
 #include <cblas.h>
 #endif
 

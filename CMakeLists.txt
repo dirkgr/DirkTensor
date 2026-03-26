@@ -15,8 +15,8 @@ find_package(BLAS REQUIRED)
 find_package(LAPACK REQUIRED)
 find_package(CURL REQUIRED)
 
-# Find BLAS include directory (cblas.h)
-find_path(BLAS_INCLUDE_DIR cblas.h)
+# Find BLAS include directory
+find_path(BLAS_INCLUDE_DIR NAMES cblas.h mkl_cblas.h)
 if(BLAS_INCLUDE_DIR)
     message(STATUS "Found BLAS headers: ${BLAS_INCLUDE_DIR}")
     include_directories(${BLAS_INCLUDE_DIR})
